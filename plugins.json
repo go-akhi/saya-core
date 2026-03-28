@@ -2,7 +2,7 @@
   "registry_version": "1",
   "updated_at": "2026-03-28T00:00:00Z",
   "signature": "",
-  "public_key": "adf7a23e44872f9649b0797b6ccc2d78eb206f05ad936886f000b0d99a2fb074",
+  "public_key": "6f4a9d0278974a533f22a8d99caabe4289ec319c87ea635d3ec99a5509a53e7c",
   "plugins": [
     {
       "name": "chat",
