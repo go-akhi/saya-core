@@ -1,1 +1,5 @@
 Documentation/Thinking process
+
+# Signing keys
+private_key.hex
+public_key.hex

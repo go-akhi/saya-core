@@ -1,8 +1,8 @@
 {
   "registry_version": "1",
   "updated_at": "2026-03-28T00:00:00Z",
-  "signature": "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-  "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+  "signature": "a70e900bad37f781eccb40a6f54a85cda16ae4e9455233bdead14ccde9ec144ba1f16d14705d901cd8a9eb921952fd0c07a9ccc248d4a85d44720c788c2b8606",
+  "public_key": "1474ef15959438b32fdf4409819e4977804f69fc5a8b3e53db67cd88b5d6768f",
   "plugins": [
     {
       "name": "chat",
@@ -14,12 +14,48 @@
       "verified": false,
       "manifest": {
         "columns": [
-          { "name": "title", "display": "Title", "type": "main", "dtype": "text", "sortable": true },
-          { "name": "last_message_at", "display": "Last Message", "type": "secondary", "dtype": "date", "sortable": true },
-          { "name": "message_count", "display": "Messages", "type": "secondary", "dtype": "number", "sortable": false },
-          { "name": "messages", "display": "Chat", "type": "secondary", "dtype": "text", "sortable": false },
-          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
-          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+          {
+            "name": "title",
+            "display": "Title",
+            "type": "main",
+            "dtype": "text",
+            "sortable": true
+          },
+          {
+            "name": "last_message_at",
+            "display": "Last Message",
+            "type": "secondary",
+            "dtype": "date",
+            "sortable": true
+          },
+          {
+            "name": "message_count",
+            "display": "Messages",
+            "type": "secondary",
+            "dtype": "number",
+            "sortable": false
+          },
+          {
+            "name": "messages",
+            "display": "Chat",
+            "type": "secondary",
+            "dtype": "text",
+            "sortable": false
+          },
+          {
+            "name": "cognitive_axis",
+            "display": "Axis",
+            "type": "filterable",
+            "dtype": "enum",
+            "sortable": true
+          },
+          {
+            "name": "context_axis",
+            "display": "Context",
+            "type": "filterable",
+            "dtype": "text",
+            "sortable": false
+          }
         ]
       }
     }
