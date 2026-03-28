@@ -68,12 +68,14 @@ body {
 }
 
 .app {
+  width: 100vw;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
   background-color: var(--bg-primary);
   border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(128, 128, 128, 0.15);
 }
 
 .main-area {
