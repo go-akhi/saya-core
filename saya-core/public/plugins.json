@@ -5,48 +5,19 @@
   "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
   "plugins": [
     {
-      "name": "email",
-      "display_name": "Email",
-      "icon": "📧",
-      "version": "0.1.0",
-      "description": "Gmail and Outlook integration with AI-powered triage and the 4R cognitive framework.",
-      "repo_url": "https://github.com/saya-org/plugin-email",
-      "verified": true,
-      "manifest": {
-        "columns": [
-          { "name": "subject", "display": "Subject", "type": "main", "dtype": "text", "sortable": true },
-          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
-          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
-        ]
-      }
-    },
-    {
-      "name": "tasks",
-      "display_name": "Tasks",
-      "icon": "✅",
-      "version": "0.1.0",
-      "description": "Task management with GTD methodology and AI prioritization based on cognitive load.",
-      "repo_url": "https://github.com/saya-org/plugin-tasks",
-      "verified": true,
-      "manifest": {
-        "columns": [
-          { "name": "title", "display": "Title", "type": "main", "dtype": "text", "sortable": true },
-          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
-          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
-        ]
-      }
-    },
-    {
-      "name": "notes",
-      "display_name": "Notes",
-      "icon": "📝",
-      "version": "0.1.0",
-      "description": "Note-taking with bidirectional linking and AI-summarized context.",
-      "repo_url": "https://github.com/saya-org/plugin-notes",
+      "name": "chat",
+      "display_name": "Chat",
+      "icon": "💬",
+      "version": "v0.1.0-beta",
+      "description": "A chatbot plugin with AI-powered cognitive axis classification. Store conversations, classify them using the 4R framework, and organize by context.",
+      "repo_url": "https://github.com/go-akhi/plugin-chat",
       "verified": false,
       "manifest": {
         "columns": [
           { "name": "title", "display": "Title", "type": "main", "dtype": "text", "sortable": true },
+          { "name": "last_message_at", "display": "Last Message", "type": "secondary", "dtype": "date", "sortable": true },
+          { "name": "message_count", "display": "Messages", "type": "secondary", "dtype": "number", "sortable": false },
+          { "name": "messages", "display": "Chat", "type": "secondary", "dtype": "text", "sortable": false },
           { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
           { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
         ]
