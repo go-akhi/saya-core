@@ -39,6 +39,40 @@ Saya is a personal knowledge management system with a plugin-based architecture.
 
 **Context Axis:**
 - User-defined categories for organizing items (e.g., "Work", "Personal", "Side Project")
+- Created and managed by users through the Saya Core UI
+- Plugins should never create or modify context_axis values — just assign them to items
+
+**Managing context_axis values:**
+
+Context axes are created by users in Saya Core's settings (Settings → Context Axes). They cannot be created programmatically by plugins. When users create axes, they appear in the filter strips at the top of the UI.
+
+| Setting | Description |
+|---------|-------------|
+| `name` | Unique identifier (e.g., "work", "personal") |
+| `description` | Optional explanation |
+| `icon` | Emoji for display |
+| `color` | Color for visual distinction |
+
+**How plugins use context_axis:**
+
+```typescript
+// When creating an item, assign a context
+await api.mutate({
+    operation: "create",
+    data: {
+        subject: "Project meeting",
+        cognitive_axis: "require",
+        context_axis: "work"  // Assign to "Work" context
+    }
+});
+
+// Query items for a specific context
+const workEmails = await api.query({
+    filters: { context_axis: "work" }
+});
+```
+
+**Important:** Do not hardcode context_axis values in your plugin. The context values are entirely user-defined. Your plugin should accept whatever values the user has configured.
 
 **Items:**
 - The fundamental data unit in Saya
@@ -113,6 +147,14 @@ Emoji or character displayed in the plugin sidebar.
 
 ```json
 "icon": "📧"
+```
+
+#### `version` (optional)
+
+Semver version string for the plugin. Used for marketplace listings and migration tracking.
+
+```json
+"version": "0.1.0"
 ```
 
 #### `columns` (required)
@@ -312,37 +354,38 @@ CREATE INDEX idx_email_context ON email_items(context_axis);
 
 When you update your plugin and need to change the database schema, you must handle migrations yourself. The core does **not** automatically re-run `schema.sql` on updates.
 
+**Current limitation:** Plugins cannot execute raw SQL (ALTER TABLE, etc.). Schema changes require the user to reinstall the plugin.
+
 **Recommended approach:**
 
 1. Store a version number in your plugin settings
 2. On first load, check if migrations are needed
-3. Apply migrations manually
+3. If your schema version is outdated, show a message prompting the user to reinstall
 
 ```typescript
 import { SayaApi } from "./saya-api/index.ts";
 
 const api = new SayaApi("my-plugin");
 
-async function migrate() {
+async function checkSchemaVersion() {
     const settings = await api.loadSettings();
     const currentVersion = settings.schema_version || 0;
-    
-    if (currentVersion < 1) {
-        // Add new column
-        await api.query({ operation: "exec_sql" }); // Future: raw SQL support
-        await api.saveSettings({ ...settings, schema_version: 1 });
-    }
-    
-    if (currentVersion < 2) {
-        // Add another migration
-        await api.saveSettings({ ...settings, schema_version: 2 });
-    }
-}
+    const requiredVersion = 2; // Your current schema version
 
-await migrate();
+    if (currentVersion < requiredVersion) {
+        showReinstallBanner("Schema outdated. Please reinstall the plugin.");
+        return false;
+    }
+    return true;
+}
 ```
 
-**Note:** If you add columns after initial install, the core will need to run `ALTER TABLE` statements. Currently, plugins cannot execute raw SQL — you must ask users to reinstall or request core support for migrations.
+**When to release a new schema version:**
+
+1. Update `schema.sql` with new columns/tables
+2. Increment your plugin version in `manifest.json` and `plugins.json`
+3. Publish to the marketplace
+4. Users reinstall to get the new schema
 
 ### Item Fields
 
@@ -352,6 +395,60 @@ When creating items via the API, these fields are automatically managed:
 |-------|------|-------------|
 | `id` | TEXT | UUID auto-generated if not provided |
 | `created_at` | TEXT | ISO 8601 timestamp auto-generated |
+
+### JSON Columns
+
+Since each plugin gets only one table, store complex/nested data as JSON in TEXT columns. SQLite supports JSON extraction via `JSON_EXTRACT()`.
+
+**Example: Chatbot plugin storing messages as JSON**
+
+```sql
+CREATE TABLE chatbot_items (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    title TEXT NOT NULL,                    -- Thread title
+    messages TEXT DEFAULT '[]',             -- JSON array of messages
+    cognitive_axis TEXT DEFAULT 'review',
+    context_axis TEXT
+);
+```
+
+**Message JSON structure:**
+
+```json
+[
+    {
+        "role": "user",
+        "content": "Hello",
+        "timestamp": "2026-03-28T12:00:00Z"
+    },
+    {
+        "role": "assistant",
+        "content": "Hi! How can I help?",
+        "timestamp": "2026-03-28T12:00:01Z"
+    }
+]
+```
+
+**Filtering by JSON content:**
+
+The core API queries use SQLite under the hood. While the current API doesn't expose raw JSON filtering, you can:
+1. Store key fields as separate columns for filtering
+2. Keep JSON for display/complex data
+
+```sql
+-- For a chatbot thread, store the last message timestamp separately
+CREATE TABLE chatbot_items (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    title TEXT NOT NULL,
+    last_message_at TEXT,                    -- Filterable column
+    message_count INTEGER DEFAULT 0,         -- Filterable column
+    messages TEXT DEFAULT '[]',               -- JSON for display
+    cognitive_axis TEXT DEFAULT 'review',
+    context_axis TEXT
+);
+```
 
 ---
 
@@ -659,6 +756,23 @@ Your plugin should ensure `context_columns` contain sufficient information for a
 
 Cross-plugin actions allow plugins to create items based on other plugins' data.
 
+### Important: Plugins Cannot Communicate Directly
+
+Plugins are sandboxed in iframes and **cannot** call other plugins' APIs or access their data directly. This is by design for security and isolation.
+
+The only way for plugins to interact is through `provides_actions`, which is mediated by the core.
+
+**What plugins CANNOT do:**
+- Call another plugin's API methods directly
+- Access another plugin's iframe or DOM
+- Read/write another plugin's data via `api.query()` or `api.mutate()` on other plugins
+- Communicate via postMessage between plugin iframes
+
+**What plugins CAN do:**
+- Declare `provides_actions` to offer actions to other plugins
+- Trigger AI actions on other plugins via the dock
+- Use the core's settings storage shared by all plugins
+
 ### Use Cases
 
 - Create a task from an email
@@ -722,6 +836,35 @@ Field mappings support simple expressions:
 ---
 
 ## Testing
+
+### Local Development (Hot Reload)
+
+Saya Core watches your plugin's `ui/` directory for changes. When you edit any file in your plugin's UI folder, the iframe automatically reloads.
+
+**Setup for development:**
+
+1. Create a symlink or place your plugin directly in `~/.local/share/saya-core/plugins/`
+   ```bash
+   # Option A: Symlink (recommended for active development)
+   ln -s /path/to/your/plugin ~/.local/share/saya-core/plugins/my-plugin
+
+   # Option B: Copy directly
+   cp -r /path/to/your/plugin ~/.local/share/saya-core/plugins/my-plugin
+   ```
+2. Launch Saya Core
+3. Select your plugin in the sidebar
+4. Edit files in your plugin's `ui/` folder — changes appear instantly
+
+**What triggers a reload:**
+- Editing `ui/index.html`
+- Editing `ui/styles.css`
+- Editing any `.js` or `.ts` file in `ui/`
+- Adding/removing files in `ui/`
+
+**What does NOT trigger a reload:**
+- Changes to `manifest.json` (requires restart)
+- Changes to `schema.sql` (requires reinstall)
+- Changes outside `ui/` directory
 
 ### Manual Testing
 
@@ -813,9 +956,62 @@ Plugins must pass validation to be registered:
 
 ### Performance
 
-- **Pagination** — Always use `limit` and `offset` for large datasets
-- **Indexing** — Create indexes on frequently filtered columns
-- **Lazy loading** — Load data on demand, not all at once
+**Pagination:**
+
+Always paginate queries for datasets over 50 items. Recommended page sizes:
+
+| Dataset Size | Recommended Page Size | Notes |
+|-------------|----------------------|-------|
+| < 50 items | No pagination needed | Load all at once |
+| 50-500 items | 50 items per page | Fast scrolling |
+| 500-5000 items | 25 items per page | Balance UX and performance |
+| 5000+ items | 20 items per page | Consider search instead |
+
+```typescript
+// Example: Paginated email list
+const PAGE_SIZE = 50;
+let page = 0;
+
+async function loadPage() {
+    const emails = await api.query({
+        sort: { column: "created_at", direction: "desc" },
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE
+    });
+    renderEmails(emails);
+}
+```
+
+**Indexing strategies:**
+
+Always create indexes on:
+- `cognitive_axis` — Used for filtering (always)
+- `context_axis` — Used for filtering (always)
+- Any column used in `sort` — e.g., `created_at`, `received_at`
+- Any column frequently filtered — e.g., `sender`, `status`
+
+```sql
+-- Essential indexes
+CREATE INDEX idx_plugin_cognitive ON {name}_items(cognitive_axis);
+CREATE INDEX idx_plugin_context ON {name}_items(context_axis);
+
+-- Recommended for common queries
+CREATE INDEX idx_plugin_created ON {name}_items(created_at);
+```
+
+**Row count guidelines:**
+
+| Plugin Type | Expected Volume | Design Consideration |
+|-------------|-----------------|---------------------|
+| Email | 10,000+ | Heavy pagination, archive old items |
+| Tasks | 500-2000 | Keep completed items in "Relieve" axis |
+| Notes | 100-500 | Most queries on recent items |
+| Chatbot | 10,000+ messages | Store messages as JSON in single row |
+
+**Lazy loading:**
+- Load items on demand, not all at once
+- Consider implementing infinite scroll for high-volume plugins
+- Cache frequently accessed data in plugin settings
 
 ### UX Consistency
 
@@ -826,7 +1022,7 @@ Plugins must pass validation to be registered:
 
 ### Error Handling
 
-```javascript
+```typescript
 try {
     const items = await api.query({ filters: { invalid: "x" } });
 } catch (error) {
@@ -837,6 +1033,19 @@ try {
     }
 }
 ```
+
+### Error Reference
+
+| Error Pattern | Description | Recommended Action |
+|---------------|-------------|-------------------|
+| `timed out after {ms}ms` | Request exceeded timeout (default: 30s) | Retry the request |
+| `Not connected to core` | API called before `connect()` | Call `api.connect(window.parent)` first |
+| `Plugin not found` | Invalid plugin name | Check manifest `name` matches |
+| `Invalid filter` | Unknown filter column name | Verify column exists in manifest |
+| `Plugin '{name}' is missing the required 'cognitive_axis' column` | Schema validation error | Add `cognitive_axis` column |
+| `Plugin '{name}' is missing the required 'context_axis' column` | Schema validation error | Add `context_axis` column |
+| `Plugin '{name}' declares actions for '{target}' which is not registered` | Cross-plugin action error | Ensure target plugin exists |
+| `Network isolation violation detected` | Plugin contains forbidden network calls | Remove fetch/XHR/axios calls |
 
 ---
 
@@ -1212,6 +1421,28 @@ Avoid relative links, local image paths, or badges that won't render outside Git
 4. Submit a new PR
 
 Existing users will see the updated version in the marketplace and can reinstall.
+
+---
+
+## External Data Integration
+
+Plugins currently sync data manually — users must trigger actions or the plugin polls via `api.query()`. Real-time sync and webhooks are not supported in v1.
+
+**Out of scope for v1:**
+- Webhook endpoints (e.g., receiving Gmail push notifications)
+- Real-time sync services
+- Background polling/cron jobs
+- P2P sync between instances
+
+**What plugins can do today:**
+- Fetch data on user action (e.g., "Sync" button)
+- Use AI actions to process data
+- Store data locally and query it
+
+**Future considerations:**
+- Webhook support via core-managed endpoints
+- Background sync service
+- Real-time event streams from external services
 
 ---
 

@@ -33,4 +33,5 @@ zip = "2"
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["pem"] }
 hex = "0.4"
+notify = { version = "7", features = ["macos_kqueue"] }
 

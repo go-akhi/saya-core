@@ -2,6 +2,7 @@ mod db;
 pub mod plugins;
 
 use std::path::PathBuf;
+use tauri::Manager;
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
 
@@ -715,6 +716,20 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(db_state)
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            let plugins_dir = get_plugins_dir();
+            match plugins::hot_reload::HotReloadWatcher::new(app_handle, plugins_dir) {
+                Ok(watcher) => {
+                    app.manage(watcher);
+                    tracing::info!("Hot reload watcher initialized");
+                }
+                Err(e) => {
+                    tracing::warn!("Hot reload watcher failed to start: {}", e);
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             get_db_status,

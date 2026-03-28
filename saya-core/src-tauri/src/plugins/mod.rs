@@ -1,5 +1,6 @@
 pub mod registry;
 pub mod marketplace;
+pub mod hot_reload;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

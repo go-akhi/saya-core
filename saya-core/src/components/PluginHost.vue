@@ -3,10 +3,12 @@ import { onMounted, onUnmounted, watch, ref } from "vue";
 import { usePluginStore } from "../stores/plugins";
 import { createCoreMessageHandler } from "../lib/core-message-handler";
 import type { SayaMessage } from "../lib/saya-api";
+import { listen } from "@tauri-apps/api/event";
 
 const pluginStore = usePluginStore();
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const messageHandler = createCoreMessageHandler();
+let unlistenHotReload: (() => void) | null = null;
 
 const handleMessage = (event: MessageEvent) => {
   const message = event.data as SayaMessage;
@@ -16,12 +18,26 @@ const handleMessage = (event: MessageEvent) => {
   }
 };
 
-onMounted(() => {
+function reloadIframe() {
+  if (iframeRef.value) {
+    const src = iframeRef.value.src;
+    iframeRef.value.src = src;
+  }
+}
+
+onMounted(async () => {
   window.addEventListener("message", handleMessage);
+
+  unlistenHotReload = await listen<{ plugin_name: string }>("plugin-file-changed", (event) => {
+    if (event.payload.plugin_name === pluginStore.activePlugin) {
+      reloadIframe();
+    }
+  });
 });
 
 onUnmounted(() => {
   window.removeEventListener("message", handleMessage);
+  if (unlistenHotReload) unlistenHotReload();
 });
 
 watch(() => pluginStore.activePlugin, () => {
