@@ -22,6 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sign registry
+        env:
+          REGISTRY_PRIVATE_KEY: ${{ secrets.REGISTRY_PRIVATE_KEY }}
+        run: |
+          echo "$REGISTRY_PRIVATE_KEY" > private_key.hex
+          node sign-registry.mjs plugins.json private_key.hex
+          rm private_key.hex
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
