@@ -44,19 +44,19 @@ export function createCoreMessageHandler(): PluginMessageHandler {
       try {
         switch (message.type) {
           case "query":
-            handleQuery(message.payload as QueryOptions)
+            handleQuery(message.plugin || "", message.payload as QueryOptions)
               .then(data => sendResponse({ success: true, data }))
               .catch(error => sendResponse({ success: false, error: String(error) }));
             break;
 
           case "mutate":
-            handleMutation(message.payload as MutationOptions)
+            handleMutation(message.plugin || "", message.payload as MutationOptions)
               .then(data => sendResponse({ success: true, data }))
               .catch(error => sendResponse({ success: false, error: String(error) }));
             break;
 
           case "ai_action":
-            handleAiAction(message.payload as AiActionRequest)
+            handleAiAction(message.plugin || "", message.payload as AiActionRequest)
               .then(data => sendResponse({ success: true, data }))
               .catch(error => sendResponse({ success: false, error: String(error) }));
             break;
@@ -106,19 +106,19 @@ export function createCoreMessageHandler(): PluginMessageHandler {
   };
 }
 
-async function handleQuery(options: QueryOptions): Promise<Item[]> {
+async function handleQuery(pluginName: string, options: QueryOptions): Promise<Item[]> {
   if (options.operation === "get_manifest") {
-    const result = await invoke<unknown>("get_plugin_manifest", { pluginName: options.plugin });
+    const result = await invoke<unknown>("get_plugin_manifest", { pluginName });
     return result as Item[];
   }
 
   if (options.operation === "get_info") {
-    const result = await invoke<unknown>("get_plugin_info", { pluginName: options.plugin });
+    const result = await invoke<unknown>("get_plugin_info", { pluginName });
     return result as Item[];
   }
 
   const result = await invoke<unknown>("query_plugin_items", {
-    pluginName: options.plugin,
+    pluginName,
     columns: options.columns,
     filters: options.filters,
     sortColumn: options.sort?.column,
@@ -129,9 +129,9 @@ async function handleQuery(options: QueryOptions): Promise<Item[]> {
   return result as Item[];
 }
 
-async function handleMutation(options: MutationOptions): Promise<Item> {
+async function handleMutation(pluginName: string, options: MutationOptions): Promise<Item> {
   const result = await invoke<unknown>("mutate_plugin_item", {
-    pluginName: options.plugin,
+    pluginName,
     operation: options.operation,
     id: options.id,
     data: options.data,
@@ -139,9 +139,9 @@ async function handleMutation(options: MutationOptions): Promise<Item> {
   return result as Item;
 }
 
-async function handleAiAction(options: AiActionRequest): Promise<Record<string, unknown>> {
+async function handleAiAction(pluginName: string, options: AiActionRequest): Promise<Record<string, unknown>> {
   const result = await invoke<unknown>("execute_ai_action", {
-    pluginName: options.plugin,
+    pluginName,
     actionId: options.action_id,
     itemIds: options.item_ids,
     context: options.context,

@@ -8,6 +8,7 @@ import type {
   ResponsePayload,
   PluginInfo,
   PluginManifest,
+  PluginSettings,
 } from "./types";
 
 function generateId(): string {
@@ -143,7 +144,7 @@ export class SayaApi {
 
     this.sendMessage({
       type: "subscribe",
-      payload: { plugin: event.split("_")[0], event },
+      payload: { plugin: this.pluginName, event },
       plugin: this.pluginName,
     }).catch((err) => {
       this.subscriptions.delete(id);
@@ -177,6 +178,22 @@ export class SayaApi {
     return this.sendMessage<PluginInfo>({
       type: "query",
       payload: { plugin: this.pluginName, operation: "get_info" },
+      plugin: this.pluginName,
+    });
+  }
+
+  async saveSettings(settings: PluginSettings): Promise<void> {
+    await this.sendMessage<void>({
+      type: "mutate",
+      payload: { plugin: this.pluginName, operation: "save_settings", data: settings },
+      plugin: this.pluginName,
+    });
+  }
+
+  async loadSettings(): Promise<PluginSettings> {
+    return this.sendMessage<PluginSettings>({
+      type: "query",
+      payload: { plugin: this.pluginName, operation: "load_settings" },
       plugin: this.pluginName,
     });
   }

@@ -257,22 +257,32 @@ Declares actions that this plugin can perform on other plugins' items.
 
 #### `has_settings` (optional)
 
-Declares whether this plugin provides a settings UI. When `true`, the Settings button in the plugin toolbar will be enabled and display a popup with the plugin's settings interface.
+Declares whether this plugin provides a settings UI. When `true`, the Settings button in the plugin sidebar footer will be enabled. Clicking it opens a popup displaying the plugin's `ui/settings.html` in a fixed-width panel (320px wide, max 400px tall).
 
 ```json
 "has_settings": true
 ```
 
 **Behavior:**
-- If `true` or omitted: Settings button is enabled when this plugin is active
-- If `false` or property absent: Settings button is grayed out
+- If `true`: Settings button is enabled when this plugin is active
+- If `false` or property absent (default): Settings button is grayed out
 - Settings are rendered via iframe (path: `ui/settings.html`)
+- The settings iframe has access to the same `saya-api` library
 
 ---
 
 ## Database Schema
 
 Each plugin must define its SQLite table schema in `schema.sql`. The schema is automatically executed when the plugin is registered.
+
+### Important: One Table Per Plugin
+
+Each plugin gets exactly **one table** for its items. You cannot create multiple tables in `schema.sql`. If your plugin needs related data (like chat messages for a chatbot), you should store them as JSON within your main table.
+
+If you need more complex structures, consider:
+- Using JSON columns (SQLite supports JSON extraction)
+- Storing related items as separate rows with a type or parent ID field
+- Using the core's settings storage via `api.saveSettings()` for configuration
 
 ### Schema Requirements
 
@@ -297,6 +307,42 @@ CREATE INDEX idx_email_context ON email_items(context_axis);
 2. **Created timestamp** must be `created_at` as TEXT
 3. **Required columns** — `cognitive_axis` and `context_axis` must exist
 4. **Naming convention** — Table name format: `{plugin_name}_items`
+
+### Schema Migrations
+
+When you update your plugin and need to change the database schema, you must handle migrations yourself. The core does **not** automatically re-run `schema.sql` on updates.
+
+**Recommended approach:**
+
+1. Store a version number in your plugin settings
+2. On first load, check if migrations are needed
+3. Apply migrations manually
+
+```typescript
+import { SayaApi } from "./saya-api/index.ts";
+
+const api = new SayaApi("my-plugin");
+
+async function migrate() {
+    const settings = await api.loadSettings();
+    const currentVersion = settings.schema_version || 0;
+    
+    if (currentVersion < 1) {
+        // Add new column
+        await api.query({ operation: "exec_sql" }); // Future: raw SQL support
+        await api.saveSettings({ ...settings, schema_version: 1 });
+    }
+    
+    if (currentVersion < 2) {
+        // Add another migration
+        await api.saveSettings({ ...settings, schema_version: 2 });
+    }
+}
+
+await migrate();
+```
+
+**Note:** If you add columns after initial install, the core will need to run `ALTER TABLE` statements. Currently, plugins cannot execute raw SQL — you must ask users to reinstall or request core support for migrations.
 
 ### Item Fields
 
@@ -363,10 +409,23 @@ body {
 
 ### Initializing the Plugin
 
-Use the `saya-api` library to communicate with core:
+Use the `saya-api` library to communicate with core. Plugins should copy the `saya-api` directory from the core into their `ui/` folder:
 
-```javascript
-import { SayaApi } from "./saya-api.js";
+```
+email/
+├── manifest.json
+├── schema.sql
+└── ui/
+    ├── index.html
+    └── saya-api/
+        ├── index.ts    # SayaApi class
+        └── types.ts    # TypeScript interfaces
+```
+
+Then import:
+
+```typescript
+import { SayaApi } from "./saya-api/index.ts";
 
 const api = new SayaApi("email");
 api.connect(window.parent);
@@ -385,7 +444,20 @@ loadEmails();
 
 ### Plugin Settings
 
-If your plugin declares `has_settings: true` in the manifest, you should provide a settings UI at `ui/settings.html`. This file is loaded into a popup when the user clicks the Settings button in the plugin toolbar.
+If your plugin declares `has_settings: true` in the manifest, you should provide a settings UI at `ui/settings.html`. This file is loaded into a popup when the user clicks the Settings button in the plugin sidebar footer.
+
+**The settings popup:**
+- Appears as a flyout panel to the right of the sidebar
+- Width: 320px, max height: 400px
+- Contains your `ui/settings.html` in an iframe
+- Has access to the same `saya-api` library
+- Close button in the top-right corner
+
+**Settings storage:**
+- Use `api.saveSettings(data)` to persist settings (key-value store)
+- Use `api.loadSettings()` to retrieve saved settings
+- Settings are stored per-plugin in the core's database
+- Settings persist across app restarts
 
 ```html
 <!DOCTYPE html>
@@ -446,7 +518,7 @@ If your plugin declares `has_settings: true` in the manifest, you should provide
     <button class="save" onclick="saveSettings()">Save</button>
 
     <script type="module">
-        import { SayaApi } from "./saya-api.js";
+        import { SayaApi } from "./saya-api/index.ts";
 
         const api = new SayaApi("email");
         api.connect(window.parent);
@@ -455,6 +527,16 @@ If your plugin declares `has_settings: true` in the manifest, you should provide
             const provider = document.getElementById("provider").value;
             await api.saveSettings({ provider });
         }
+
+        // Load existing settings
+        async function loadExistingSettings() {
+            const settings = await api.loadSettings();
+            if (settings.provider) {
+                document.getElementById("provider").value = settings.provider;
+            }
+        }
+
+        loadExistingSettings();
     </script>
 </body>
 </html>
@@ -464,6 +546,63 @@ If your plugin declares `has_settings: true` in the manifest, you should provide
 - Settings popup appears when the active plugin has `has_settings: true`
 - The popup displays the plugin's `display_name` in the header
 - Plugins can access settings storage via `api.saveSettings()` and `api.loadSettings()`
+
+### Event Subscriptions
+
+Plugins can listen for changes to their items using the `subscribe` method:
+
+```typescript
+const subscriptionId = api.subscribe('items_changed', (payload) => {
+    console.log('Items changed:', payload);
+});
+
+// Later, unsubscribe
+api.unsubscribe(subscriptionId);
+```
+
+**Available events:**
+
+| Event | Description |
+|-------|-------------|
+| `items_changed` | Any change to the plugin's items |
+| `item_created` | A new item was created |
+| `item_updated` | An existing item was updated |
+| `item_deleted` | An item was deleted |
+
+**Event payload structure:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | string | The event type (e.g., `item_created`) |
+| `item` | object | The affected item (for `item_created`, `item_updated`, `item_deleted`) |
+| `items` | object[] | Array of all items after the change (for `items_changed`) |
+
+**Example payload for `item_created`:**
+
+```json
+{
+    "type": "item_created",
+    "item": {
+        "id": "uuid-1234",
+        "subject": "New Email",
+        "sender": "test@example.com",
+        "cognitive_axis": "require",
+        "context_axis": "Work"
+    }
+}
+```
+
+**Example payload for `items_changed`:**
+
+```json
+{
+    "type": "items_changed",
+    "items": [
+        { "id": "uuid-1234", "subject": "Email 1", "cognitive_axis": "require" },
+        { "id": "uuid-5678", "subject": "Email 2", "cognitive_axis": "review" }
+    ]
+}
+```
 
 ---
 
@@ -856,7 +995,7 @@ CREATE INDEX idx_email_sender ON email_items(sender);
     </div>
 
     <script type="module">
-        import { SayaApi } from "./saya-api.js";
+        import { SayaApi } from "./saya-api/index.ts";
 
         const api = new SayaApi("email");
         api.connect(window.parent);

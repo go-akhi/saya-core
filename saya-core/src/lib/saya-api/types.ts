@@ -62,31 +62,27 @@ export interface Item {
 }
 
 export interface QueryOptions {
-  plugin: string;
   columns?: string[];
   filters?: Record<string, string | string[]>;
   sort?: { column: string; direction: "asc" | "desc" };
   limit?: number;
   offset?: number;
-  operation?: "get_manifest" | "get_info";
+  operation?: "get_manifest" | "get_info" | "load_settings";
 }
 
 export interface MutationOptions {
-  plugin: string;
-  operation: "create" | "update" | "delete";
+  operation: "create" | "update" | "delete" | "save_settings";
   id?: string;
   data: Partial<Item>;
 }
 
 export interface AiActionRequest {
-  plugin: string;
   action_id: string;
   item_ids: string[];
   context?: Record<string, unknown>;
 }
 
 export interface SubscriptionOptions {
-  plugin: string;
   event: "items_changed" | "item_created" | "item_updated" | "item_deleted";
   callback: (payload: unknown) => void;
 }
@@ -112,4 +108,8 @@ export interface ResponsePayload<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+export interface PluginSettings {
+  [key: string]: unknown;
 }
