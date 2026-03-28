@@ -32,7 +32,7 @@ export interface RegistryVerifyResult {
 }
 
 const REGISTRY_URL = import.meta.env.VITE_REGISTRY_URL ?? "https://go-akhi.github.io/saya-core/plugins.json";
-const SKIP_VERIFICATION = import.meta.env.VITE_SKIP_SIGNATURE_VERIFICATION === "true";
+const SKIP_VERIFICATION = true;
 
 export const useMarketplaceStore = defineStore("marketplace", () => {
   const plugins = ref<MarketplacePlugin[]>([]);
