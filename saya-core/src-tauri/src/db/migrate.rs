@@ -40,7 +40,7 @@ fn migrate_v1_to_v2(conn: &Connection) -> rusqlite::Result<()> {
 
     conn.execute_batch(
         "INSERT OR IGNORE INTO context_axis (name, description, icon, color, is_default)
-             VALUES ('General', 'Catch-all for unclassified items', X'1F4CB', '#6B7280', 1);
+             VALUES ('General', 'Catch-all for unclassified items', '📋', '#6B7280', 1);
          INSERT OR REPLACE INTO schema_version (version) VALUES (2);",
     )?;
 

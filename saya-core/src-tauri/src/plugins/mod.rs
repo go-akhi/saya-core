@@ -1,4 +1,5 @@
 pub mod registry;
+pub mod marketplace;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;

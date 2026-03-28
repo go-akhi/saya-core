@@ -641,6 +641,30 @@ fn get_all_plugins(state: tauri::State<'_, db::DbState>) -> Result<Vec<serde_jso
 }
 
 #[tauri::command]
+async fn fetch_plugin_registry(url: String) -> Result<String, String> {
+    plugins::marketplace::fetch_registry(&url).await
+}
+
+#[tauri::command]
+fn verify_registry(json: String) -> Result<plugins::marketplace::RegistryVerifyResult, String> {
+    plugins::marketplace::verify_registry_signature(&json)
+}
+
+#[tauri::command]
+async fn fetch_plugin_readme(owner: String, repo: String) -> Result<String, String> {
+    plugins::marketplace::fetch_readme(&owner, &repo).await
+}
+
+#[tauri::command]
+async fn install_plugin_from_repo(
+    repo_url: String,
+    _state: tauri::State<'_, db::DbState>,
+) -> Result<bool, String> {
+    let plugins_dir = get_plugins_dir();
+    plugins::marketplace::install_plugin_from_repo(&repo_url, &plugins_dir).await
+}
+
+#[tauri::command]
 fn toggle_plugin_enabled(
     plugin_name: String,
     state: tauri::State<'_, db::DbState>,
@@ -717,6 +741,10 @@ pub fn run() {
             delete_user_account,
             get_all_plugins,
             toggle_plugin_enabled,
+            fetch_plugin_registry,
+            verify_registry,
+            fetch_plugin_readme,
+            install_plugin_from_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useAxesStore } from "../stores/axes";
 import { useUiStore } from "../stores/ui";
 import AddContextAxis from "./AddContextAxis.vue";
 
 const axesStore = useAxesStore();
 const uiStore = useUiStore();
+
+onMounted(() => axesStore.loadAxes());
 
 type Platform = "mac" | "windows" | "linux";
 

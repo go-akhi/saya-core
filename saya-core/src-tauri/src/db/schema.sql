@@ -61,6 +61,6 @@ CREATE TABLE IF NOT EXISTS llm_endpoints (
 INSERT OR IGNORE INTO schema_version (version) VALUES (2);
 
 INSERT OR IGNORE INTO context_axis (name, description, icon, color, is_default) VALUES
-    ('General', 'Catch-all for unclassified items', '\1F4CB', '#6B7280', 1),
-    ('Work', NULL, '\1F4BC', '#3B82F6', 1),
-    ('Personal', NULL, '\1F3E0', '#10B981', 1);
+    ('General', 'Catch-all for unclassified items', '📋', '#6B7280', 1),
+    ('Work', NULL, '💼', '#3B82F6', 1),
+    ('Personal', NULL, '🏠', '#10B981', 1);

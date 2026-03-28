@@ -17,6 +17,7 @@
 9. [Validation & Security](#validation--security)
 10. [Best Practices](#best-practices)
 11. [Example: Email Plugin](#example-email-plugin)
+12. [Publishing to the Marketplace](#publishing-to-the-marketplace)
 
 ---
 
@@ -919,6 +920,162 @@ CREATE INDEX idx_email_sender ON email_items(sender);
 
 ---
 
+## Publishing to the Marketplace
+
+Once your plugin is built and tested, you can publish it to the Saya Plugin Marketplace so users can discover and install it directly from the app.
+
+### Overview
+
+The marketplace is a static JSON registry hosted on GitHub Pages at `https://<org>.github.io/saya/plugins.json`. Users browse available plugins through the in-app marketplace, view README previews, and install with one click.
+
+### Step 1: Host Your Plugin on GitHub
+
+Your plugin must live in its own public GitHub repository. The repo should contain:
+
+```
+plugin-email/
+├── manifest.json
+├── schema.sql
+├── README.md          # Shown in the in-app marketplace detail view
+└── ui/
+    ├── index.html
+    ├── styles.css     # (optional)
+    └── app.js         # (optional)
+```
+
+The repo name should follow the convention `plugin-<name>`, matching the `name` field in your `manifest.json`.
+
+### Step 2: Create a Release Tag
+
+Tag your plugin with a semver version that matches the `version` you plan to register:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+### Step 3: Add Your Plugin to the Registry
+
+Fork the main Saya repo and edit `plugins.json` at the root. Add an entry to the `plugins` array:
+
+```json
+{
+  "name": "email",
+  "display_name": "Email",
+  "icon": "📧",
+  "version": "0.1.0",
+  "description": "Gmail and Outlook integration with AI-powered triage and the 4R cognitive framework.",
+  "repo_url": "https://github.com/saya-org/plugin-email",
+  "manifest": {
+    "columns": [
+      { "name": "subject", "display": "Subject", "type": "main", "dtype": "text", "sortable": true },
+      { "name": "sender", "display": "From", "type": "secondary", "dtype": "text", "sortable": false },
+      { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
+      { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+    ]
+  }
+}
+```
+
+**Field reference:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Must match `manifest.json` `name` in your plugin repo |
+| `display_name` | Yes | Human-readable label shown in marketplace cards |
+| `icon` | Yes | Emoji displayed on the card |
+| `version` | Yes | Semver string matching your latest release tag |
+| `description` | Yes | Short description (1-2 sentences) shown on the card |
+| `repo_url` | Yes | Full URL to the GitHub repo |
+| `manifest.columns` | Yes | Copy of your plugin's `columns` so the card view can show schema info without fetching the repo |
+
+### Step 4: Submit a Pull Request
+
+1. Commit your change to `plugins.json`
+2. Open a PR against the main Saya repo
+3. The PR will be reviewed for:
+   - Valid JSON syntax
+   - Matching `name` between registry entry and plugin `manifest.json`
+   - Repo exists and is public
+   - Description is clear and concise
+4. The PR is reviewed for valid JSON, matching plugin name, and public repo
+5. Once merged, the GitHub Actions workflow signs the registry and deploys to GitHub Pages
+
+### Verified vs Community Plugins
+
+Every plugin in the registry has a `verified` flag. This is determined by the core maintainers — plugin authors cannot request or set it themselves.
+
+| Status | `verified` | Meaning |
+|--------|-----------|---------|
+| **Verified** | `true` | The core team has reviewed the plugin and considers it valuable, secure, and privacy-focused. Shown with a checkmark badge. Listed above community plugins in discovery. |
+| **Community** | `false` | Listed in the registry but not reviewed by the core team. Shown with a neutral badge. Listed below verified plugins in discovery. |
+
+**How a plugin becomes verified:**
+
+There is no application or request process. The core maintainers proactively review plugins in the registry. When the team determines a plugin adds value to the platform, is secure, and respects user privacy, they set `verified: true` in a subsequent update to `plugins.json`.
+
+This can happen at any time after a plugin is merged — it may be immediate if the plugin is simple and well-written, or it may take longer as the team gets to it. A plugin that is not yet verified is still fully installable and functional; the badge only reflects the platform's endorsement.
+
+**What the core team looks at when reviewing:**
+
+- Code quality and readability
+- No unnecessary network calls or data exfiltration
+- Minimal dependencies
+- Clear, accurate README
+- Adherence to the plugin contract (required columns, manifest structure)
+
+**The `verified` field changes exactly two things in the app:**
+
+1. The badge displayed on the plugin card (checkmark vs neutral)
+2. Sort order in discovery — verified plugins appear above unverified plugins
+
+Both verified and unverified plugins are fully installable. There is no technical restriction or warning for community plugins.
+
+**Registry signing:**
+
+The `plugins.json` file is signed with an Ed25519 signature so the app can verify the registry hasn't been tampered with. The `signature` and `public_key` fields are managed automatically by CI — plugin authors should not include or modify them:
+
+```json
+{
+  "signature": "...",
+  "public_key": "...",
+  "plugins": [...]
+}
+```
+
+On every fetch, the app verifies this signature. If verification fails, the app refuses to load the registry.
+
+### How Installation Works
+
+When a user clicks "Install Plugin" in the app:
+
+1. The app downloads the repo as a zipball from `https://api.github.com/repos/{owner}/{repo}/zipball/v{version}`
+2. The zip is extracted into `~/.local/share/saya-core/plugins/{name}/`
+3. The app runs `discover_plugins` which reads the `manifest.json` and registers the plugin in the database
+4. The plugin appears in the sidebar immediately
+
+### README Tips
+
+Your `README.md` is displayed directly in the app's plugin detail view. Keep it focused:
+
+- **What the plugin does** — 1-2 paragraphs max
+- **Setup requirements** — Any accounts, API keys, or configuration needed
+- **Screenshots** — Optional but helpful (use absolute GitHub URLs for images)
+- **Usage guide** — Brief walkthrough of core features
+
+Avoid relative links, local image paths, or badges that won't render outside GitHub.
+
+### Updating Your Plugin
+
+1. Make changes to your plugin repo
+2. Tag a new release (e.g. `v0.2.0`)
+3. Update the `version` and any changed fields in `plugins.json` in the main Saya repo
+4. Submit a new PR
+
+Existing users will see the updated version in the marketplace and can reinstall.
+
+---
+
 ## Getting Help
 
 - **API Reference** — See `Documentation/Working documents/Saya API.md`
@@ -927,4 +1084,4 @@ CREATE INDEX idx_email_sender ON email_items(sender);
 
 ---
 
-*Last updated: 2026-03-27*
+*Last updated: 2026-03-28*

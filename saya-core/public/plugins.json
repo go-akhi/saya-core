@@ -1,0 +1,54 @@
+{
+  "registry_version": "1",
+  "updated_at": "2026-03-28T00:00:00Z",
+  "plugins": [
+    {
+      "name": "email",
+      "display_name": "Email",
+      "icon": "📧",
+      "version": "0.1.0",
+      "description": "Gmail and Outlook integration with AI-powered triage and the 4R cognitive framework.",
+      "repo_url": "https://github.com/saya-org/plugin-email",
+      "verified": true,
+      "manifest": {
+        "columns": [
+          { "name": "subject", "display": "Subject", "type": "main", "dtype": "text", "sortable": true },
+          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
+          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+        ]
+      }
+    },
+    {
+      "name": "tasks",
+      "display_name": "Tasks",
+      "icon": "✅",
+      "version": "0.1.0",
+      "description": "Task management with GTD methodology and AI prioritization based on cognitive load.",
+      "repo_url": "https://github.com/saya-org/plugin-tasks",
+      "verified": true,
+      "manifest": {
+        "columns": [
+          { "name": "title", "display": "Title", "type": "main", "dtype": "text", "sortable": true },
+          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
+          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+        ]
+      }
+    },
+    {
+      "name": "notes",
+      "display_name": "Notes",
+      "icon": "📝",
+      "version": "0.1.0",
+      "description": "Note-taking with bidirectional linking and AI-summarized context.",
+      "repo_url": "https://github.com/saya-org/plugin-notes",
+      "verified": false,
+      "manifest": {
+        "columns": [
+          { "name": "title", "display": "Title", "type": "main", "dtype": "text", "sortable": true },
+          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
+          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+        ]
+      }
+    }
+  ]
+}

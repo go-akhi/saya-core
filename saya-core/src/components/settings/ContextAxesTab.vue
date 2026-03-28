@@ -6,6 +6,7 @@ const store = useAxesStore();
 
 const isAdding = ref(false);
 const editingId = ref<number | null>(null);
+const showEmojiPicker = ref(false);
 
 const form = ref({
   name: "",
@@ -15,10 +16,25 @@ const form = ref({
 
 const colorPresets = ["#3B82F6", "#10B981", "#D97706", "#DC5F3F", "#8B5CF6", "#EC4899", "#6B7280", "#14B8A6"];
 
+const emojiList = [
+  "📋", "📌", "🎯", "💡", "🔧", "🛠", "⚙", "📊", "📈", "📉",
+  "🗂", "📁", "📂", "📝", "✏", "🖊", "🖋", "🔍", "🔎", "🧪",
+  "🔬", "💻", "🖥", "📱", "🚀", "⭐", "🌟", "✨", "🔥", "❤",
+  "🟣", "🔵", "🟢", "🟡", "🟠", "🔴", "⚪", "⚫", "🟤", "🩵",
+  "🏠", "📚", "📖", "🎵", "🎮", "🎨", "🏋", "🧘", "💼", "🏠",
+  "🌳", "🌍", "⏰", "📞", "🤝", "👥", "🧠", "🩺", "🍕", "☕",
+];
+
+function selectEmoji(emoji: string) {
+  form.value.icon = emoji;
+  showEmojiPicker.value = false;
+}
+
 function resetForm() {
   form.value = { name: "", icon: "", color: "#6B7280" };
   isAdding.value = false;
   editingId.value = null;
+  showEmojiPicker.value = false;
 }
 
 function startEdit(axis: { id: number; name: string; icon: string | null; color: string | null }) {
@@ -77,9 +93,23 @@ onMounted(() => store.loadAxes());
         <input v-model="form.name" type="text" placeholder="e.g. Side Project" autofocus />
       </label>
       <div class="form-row">
-        <label class="field">
+        <label class="field emoji-field">
           <span class="field-label">Emoji</span>
-          <input v-model="form.icon" type="text" placeholder="&#x1F4CB;" maxlength="4" />
+          <div class="emoji-input-row">
+            <button class="emoji-trigger" @click="showEmojiPicker = !showEmojiPicker">
+              <span v-if="form.icon" class="emoji-preview">{{ form.icon }}</span>
+              <span v-else class="emoji-placeholder">Pick…</span>
+            </button>
+            <button v-if="form.icon" class="emoji-clear" @click="form.icon = ''">&times;</button>
+          </div>
+          <div v-if="showEmojiPicker" class="emoji-picker">
+            <button
+              v-for="e in emojiList"
+              :key="e"
+              class="emoji-option"
+              @click="selectEmoji(e)"
+            >{{ e }}</button>
+          </div>
         </label>
         <label class="field">
           <span class="field-label">Color</span>
@@ -219,6 +249,100 @@ onMounted(() => store.loadAxes());
   color: var(--text-muted);
 }
 
+.emoji-field {
+  position: relative;
+}
+
+.emoji-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.emoji-trigger {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--bg-card);
+  cursor: pointer;
+  transition: border-color 150ms;
+  font-size: 18px;
+  font-family: inherit;
+}
+
+.emoji-trigger:hover {
+  border-color: var(--accent);
+}
+
+.emoji-preview {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.emoji-placeholder {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.emoji-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.emoji-clear:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.emoji-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 2px;
+  padding: 6px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--bg-card);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.emoji-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 100ms;
+}
+
+.emoji-option:hover {
+  background-color: var(--bg-hover);
+}
+
 .color-picker {
   display: flex;
   flex-direction: column;
@@ -328,7 +452,8 @@ onMounted(() => store.loadAxes());
 }
 
 .axis-icon {
-  font-size: 14px;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .axis-name {

@@ -1,0 +1,40 @@
+{
+  "registry_version": "1",
+  "updated_at": "2026-03-28T00:00:00Z",
+  "signature": "demo-signature-for-testing",
+  "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+  "plugins": [
+    {
+      "name": "demo",
+      "display_name": "Demo Plugin",
+      "icon": "🎉",
+      "version": "0.1.0",
+      "description": "A demo plugin to test the marketplace functionality. Shows how plugins appear in the discovery UI.",
+      "repo_url": "https://github.com/saya-org/plugin-demo",
+      "verified": true,
+      "manifest": {
+        "columns": [
+          { "name": "title", "display": "Title", "type": "main", "dtype": "text", "sortable": true },
+          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
+          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+        ]
+      }
+    },
+    {
+      "name": "demo-community",
+      "display_name": "Demo Community",
+      "icon": "🔧",
+      "version": "0.1.0",
+      "description": "A community plugin demo to test unverified plugin display.",
+      "repo_url": "https://github.com/saya-org/plugin-demo-community",
+      "verified": false,
+      "manifest": {
+        "columns": [
+          { "name": "name", "display": "Name", "type": "main", "dtype": "text", "sortable": true },
+          { "name": "cognitive_axis", "display": "Axis", "type": "filterable", "dtype": "enum", "sortable": true },
+          { "name": "context_axis", "display": "Context", "type": "filterable", "dtype": "text", "sortable": false }
+        ]
+      }
+    }
+  ]
+}

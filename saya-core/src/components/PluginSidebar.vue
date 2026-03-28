@@ -3,10 +3,12 @@ import { computed, ref } from "vue";
 import { usePluginStore, type AiAction, type ProvidedAction } from "../stores/plugins";
 import { invoke } from "@tauri-apps/api/core";
 import { onMounted, onUnmounted } from "vue";
+import PluginMarketplace from "./PluginMarketplace.vue";
 
 const pluginStore = usePluginStore();
 const isLoading = ref(true);
 const showPluginSettings = ref(false);
+const showMarketplace = ref(false);
 
 interface DiscoveredPlugin {
   name: string | null;
@@ -135,7 +137,7 @@ onUnmounted(() => {
     </div>
 
     <div class="sidebar-footer">
-      <button class="plugin-btn add-plugin-btn" title="Add Plugin">
+      <button class="plugin-btn add-plugin-btn" title="Add Plugin" @click="showMarketplace = true">
         <span class="add-icon">+</span>
         <span v-if="!pluginStore.isCollapsed" class="plugin-label">Add Plugin</span>
       </button>
@@ -169,6 +171,8 @@ onUnmounted(() => {
       class="resize-handle"
       @mousedown="startResize"
     />
+
+    <PluginMarketplace v-if="showMarketplace" @close="showMarketplace = false" />
   </aside>
 </template>
 
