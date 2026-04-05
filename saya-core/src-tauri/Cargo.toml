@@ -28,10 +28,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tokio = { version = "1", features = ["full"] }
 dirs = "5"
 uuid = { version = "1", features = ["v4"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
 zip = "2"
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["pem"] }
 hex = "0.4"
 notify = { version = "7", features = ["macos_kqueue"] }
+http = "1"
 

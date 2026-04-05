@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useMarketplaceStore, type MarketplacePlugin } from "../stores/marketplace";
+import { usePluginStore } from "../stores/plugins";
 import { renderMarkdown } from "../lib/markdown";
 
 const props = defineProps<{
@@ -11,11 +12,16 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "close"): void;
   (e: "install-success"): void;
+  (e: "uninstall-success"): void;
 }>();
 
 const marketplaceStore = useMarketplaceStore();
+const pluginStore = usePluginStore();
 const readmeHtml = ref("");
 const isLoadingReadme = ref(false);
+const showUninstallConfirm = ref(false);
+const isUninstalling = ref(false);
+const uninstallError = ref("");
 
 const repoParts = computed(() => {
   const url = props.plugin.repo_url.replace("https://github.com/", "");
@@ -42,6 +48,20 @@ async function handleInstall() {
   const success = await marketplaceStore.installPlugin(props.plugin.repo_url);
   if (success) {
     emit("install-success");
+  }
+}
+
+async function handleUninstall() {
+  isUninstalling.value = true;
+  uninstallError.value = "";
+  try {
+    await pluginStore.uninstallPlugin(props.plugin.name);
+    showUninstallConfirm.value = false;
+    emit("uninstall-success");
+  } catch (e) {
+    uninstallError.value = String(e);
+  } finally {
+    isUninstalling.value = false;
   }
 }
 
@@ -80,10 +100,10 @@ function openRepo() {
         </button>
         <button
           v-if="installed"
-          class="install-btn installed"
-          disabled
+          class="uninstall-btn"
+          @click="showUninstallConfirm = true"
         >
-          Installed
+          Uninstall
         </button>
         <button
           v-else
@@ -97,6 +117,25 @@ function openRepo() {
 
       <div v-if="marketplaceStore.error" class="error-message">
         {{ marketplaceStore.error }}
+      </div>
+    </div>
+
+    <!-- Uninstall Confirmation Dialog -->
+    <div v-if="showUninstallConfirm" class="confirm-overlay" @click.self="showUninstallConfirm = false">
+      <div class="confirm-dialog">
+        <h4>Uninstall {{ plugin.display_name }}?</h4>
+        <p>This will permanently remove the plugin and delete all its data, including any tables and items it created. This action cannot be undone.</p>
+        <div v-if="uninstallError" class="error-message">
+          {{ uninstallError }}
+        </div>
+        <div class="confirm-actions">
+          <button class="cancel-btn" @click="showUninstallConfirm = false" :disabled="isUninstalling">
+            Cancel
+          </button>
+          <button class="confirm-uninstall-btn" @click="handleUninstall" :disabled="isUninstalling">
+            {{ isUninstalling ? "Uninstalling..." : "Yes, Uninstall" }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -337,9 +376,99 @@ function openRepo() {
   cursor: not-allowed;
 }
 
-.install-btn.installed {
-  background-color: #4ec9b0;
-  cursor: default;
+.uninstall-btn {
+  padding: 8px 20px;
+  border: 1px solid #f44747;
+  border-radius: var(--radius, 4px);
+  background-color: transparent;
+  color: #f44747;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 150ms, color 150ms;
+}
+
+.uninstall-btn:hover {
+  background-color: #f44747;
+  color: white;
+}
+
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+}
+
+.confirm-dialog {
+  background-color: var(--bg-card, #1e1e1e);
+  border: 1px solid var(--border, #333);
+  border-radius: var(--radius-large, 12px);
+  padding: 24px;
+  max-width: 420px;
+  width: 90%;
+}
+
+.confirm-dialog h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: var(--text-primary, #e0e0e0);
+}
+
+.confirm-dialog p {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary, #aaa);
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.cancel-btn {
+  padding: 8px 16px;
+  border: 1px solid var(--border, #333);
+  border-radius: var(--radius, 4px);
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 150ms;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover, #3c3c3c);
+}
+
+.confirm-uninstall-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius, 4px);
+  background-color: #f44747;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 150ms;
+}
+
+.confirm-uninstall-btn:hover:not(:disabled) {
+  background-color: #d73a3a;
+}
+
+.confirm-uninstall-btn:disabled,
+.cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .error-message {

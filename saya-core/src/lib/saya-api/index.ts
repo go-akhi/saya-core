@@ -9,6 +9,9 @@ import type {
   PluginInfo,
   PluginManifest,
   PluginSettings,
+  ErrorPayload,
+  CompletionRequest,
+  CompletionResponse,
 } from "./types";
 
 function generateId(): string {
@@ -194,6 +197,22 @@ export class SayaApi {
     return this.sendMessage<PluginSettings>({
       type: "query",
       payload: { plugin: this.pluginName, operation: "load_settings" },
+      plugin: this.pluginName,
+    });
+  }
+
+  async showError(payload: ErrorPayload): Promise<void> {
+    return this.sendMessage<void>({
+      type: "show_error",
+      payload,
+      plugin: this.pluginName,
+    });
+  }
+
+  async complete(request: CompletionRequest): Promise<CompletionResponse> {
+    return this.sendMessage<CompletionResponse>({
+      type: "complete",
+      payload: request,
       plugin: this.pluginName,
     });
   }

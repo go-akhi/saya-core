@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import { useMarketplaceStore, type MarketplacePlugin } from "../stores/marketplace";
 import { usePluginStore } from "../stores/plugins";
 import PluginDetail from "./PluginDetail.vue";
@@ -19,7 +20,10 @@ const installedPluginNames = computed(() => {
 });
 
 onMounted(async () => {
-  await marketplaceStore.fetchRegistry();
+  await Promise.all([
+    marketplaceStore.fetchRegistry(),
+    pluginStore.loadAllPlugins(),
+  ]);
 });
 
 function selectPlugin(plugin: MarketplacePlugin) {
@@ -32,8 +36,15 @@ function closeDetail() {
   selectedPlugin.value = null;
 }
 
-function handleInstallSuccess() {
-  pluginStore.loadAllPlugins();
+async function handleInstallSuccess() {
+  // Re-discover to register newly installed plugin in DB, then reload
+  await invoke("discover_plugins");
+  await pluginStore.loadAllPlugins();
+  closeDetail();
+}
+
+async function handleUninstallSuccess() {
+  await pluginStore.loadAllPlugins();
   closeDetail();
 }
 </script>
@@ -124,6 +135,7 @@ function handleInstallSuccess() {
         :installed="marketplaceStore.isInstalled(selectedPlugin.name, installedPluginNames)"
         @close="closeDetail"
         @install-success="handleInstallSuccess"
+        @uninstall-success="handleUninstallSuccess"
       />
     </div>
   </div>

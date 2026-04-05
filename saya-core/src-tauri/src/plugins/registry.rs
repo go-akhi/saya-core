@@ -1,3 +1,4 @@
+use crate::llm::{self, LlmClient, LlmEndpoint};
 use crate::plugins::{PluginColumn, PluginManifest};
 use rusqlite::Connection;
 use serde_json::Value;
@@ -20,6 +21,77 @@ fn json_value_to_sql_param(v: &Value) -> Box<dyn rusqlite::ToSql + Send + Sync> 
         Value::Array(arr) => Box::new(serde_json::to_string(arr).unwrap_or_default()),
         Value::Object(obj) => Box::new(serde_json::to_string(obj).unwrap_or_default()),
     }
+}
+
+// SQL injection prevention: validate and sanitize identifiers
+fn validate_plugin_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 64 {
+        return Err("Plugin name must be 1-64 characters".to_string());
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(
+            "Plugin name must contain only lowercase letters, digits, and hyphens".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn safe_table_name(plugin_name: &str) -> Result<String, String> {
+    validate_plugin_name(plugin_name)?;
+    let table_name = format!("{}_items", plugin_name.replace('-', "_"));
+    // Double-check the result is safe (only alphanumeric + underscore)
+    if !table_name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err("Generated table name contains invalid characters".to_string());
+    }
+    Ok(table_name)
+}
+
+fn validate_column_name(name: &str) -> Result<(), String> {
+    if name.is_empty() || name.len() > 128 {
+        return Err("Column name must be 1-128 characters".to_string());
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return Err("Column name must contain only letters, digits, and underscores".to_string());
+    }
+    Ok(())
+}
+
+fn validate_sort_direction(dir: &str) -> Result<&'static str, String> {
+    match dir.to_lowercase().as_str() {
+        "asc" => Ok("ASC"),
+        "desc" => Ok("DESC"),
+        _ => Err("Sort direction must be 'asc' or 'desc'".to_string()),
+    }
+}
+
+fn validate_item_id(id: &str) -> Result<(), String> {
+    if id.is_empty() || id.len() > 128 {
+        return Err("Item ID must be 1-128 characters".to_string());
+    }
+    if !id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(
+            "Item ID must contain only letters, digits, hyphens, and underscores".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn safe_join_columns(columns: &[String]) -> Result<String, String> {
+    let mut validated = Vec::with_capacity(columns.len());
+    for col in columns {
+        validate_column_name(col)?;
+        validated.push(col.clone());
+    }
+    Ok(validated.join(", "))
 }
 
 pub fn register_plugin_columns(
@@ -137,6 +209,25 @@ pub fn set_plugin_validation_error(
     Ok(())
 }
 
+pub fn uninstall_plugin(conn: &Connection, plugin_name: &str) -> Result<(), String> {
+    let table_name = safe_table_name(plugin_name)?;
+
+    conn.execute(&format!("DROP TABLE IF EXISTS {}", table_name), [])
+        .map_err(|e| format!("Failed to drop items table: {}", e))?;
+
+    conn.execute(
+        "DELETE FROM plugin_columns WHERE plugin_name = ?1",
+        [plugin_name],
+    )
+    .map_err(|e| format!("Failed to delete plugin columns: {}", e))?;
+
+    conn.execute("DELETE FROM plugins WHERE name = ?1", [plugin_name])
+        .map_err(|e| format!("Failed to delete plugin: {}", e))?;
+
+    info!("Uninstalled plugin '{}' from database", plugin_name);
+    Ok(())
+}
+
 pub fn get_plugin_manifest(conn: &Connection, plugin_name: &str) -> Result<Value, String> {
     let mut stmt = conn
         .prepare(
@@ -216,10 +307,10 @@ pub fn query_items(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<Value>, String> {
-    let table_name = format!("{}_items", plugin_name.replace('-', "_"));
+    let table_name = safe_table_name(plugin_name)?;
 
     let cols = if let Some(c) = columns {
-        c.join(", ")
+        safe_join_columns(c)?
     } else {
         "*".to_string()
     };
@@ -229,13 +320,12 @@ pub fn query_items(
 
     if let Some(f) = filters {
         if let Some(obj) = f.as_object() {
-            let conditions: Vec<String> = obj
-                .iter()
-                .map(|(k, v)| {
-                    params.push(json_value_to_sql_param(v));
-                    format!("{} = ?", k)
-                })
-                .collect();
+            let mut conditions: Vec<String> = vec![];
+            for (k, v) in obj.iter() {
+                validate_column_name(k)?;
+                params.push(json_value_to_sql_param(v));
+                conditions.push(format!("{} = ?", k));
+            }
             if !conditions.is_empty() {
                 query.push_str(" WHERE ");
                 query.push_str(&conditions.join(" AND "));
@@ -244,11 +334,11 @@ pub fn query_items(
     }
 
     if let Some(col) = sort_column {
+        validate_column_name(col)?;
         query.push_str(&format!(" ORDER BY {}", col));
         if let Some(dir) = sort_direction {
-            if dir.eq_ignore_ascii_case("desc") {
-                query.push_str(" DESC");
-            }
+            let dir = validate_sort_direction(dir)?;
+            query.push_str(&format!(" {}", dir));
         }
     }
 
@@ -313,7 +403,7 @@ pub fn mutate_item(
     id: Option<&str>,
     data: &Value,
 ) -> Result<Value, String> {
-    let table_name = format!("{}_items", plugin_name.replace('-', "_"));
+    let table_name = safe_table_name(plugin_name)?;
 
     match operation {
         "create" => {
@@ -324,6 +414,7 @@ pub fn mutate_item(
 
             if let Some(obj) = data.as_object() {
                 for (k, v) in obj {
+                    validate_column_name(k)?;
                     columns.push(k.clone());
                     placeholders.push(format!("?{}", params.len() + 1));
                     params.push(json_value_to_sql_param(v));
@@ -386,11 +477,13 @@ pub fn mutate_item(
 
         "update" => {
             if let Some(item_id) = id {
+                validate_item_id(item_id)?;
                 let mut updates = vec![];
                 let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![];
 
                 if let Some(obj) = data.as_object() {
                     for (k, v) in obj {
+                        validate_column_name(k)?;
                         updates.push(format!("{} = ?", k));
                         params.push(json_value_to_sql_param(v));
                     }
@@ -425,6 +518,7 @@ pub fn mutate_item(
 
         "delete" => {
             if let Some(item_id) = id {
+                validate_item_id(item_id)?;
                 conn.execute(
                     &format!("DELETE FROM {} WHERE id = ?", table_name),
                     [item_id],
@@ -456,54 +550,277 @@ pub fn execute_ai_action(
         item_ids.len()
     );
 
-    let table_name = format!("{}_items", plugin_name.replace('-', "_"));
+    let endpoint = get_default_llm_endpoint(conn)?;
+    let llm_client = LlmClient::new();
+
+    let table_name = safe_table_name(plugin_name)?;
+
+    let column_names = get_plugin_column_names(conn, plugin_name)?;
+    let main_column = column_names
+        .iter()
+        .find(|c| c.col_type == "main")
+        .map(|c| c.name.clone());
+    let secondary_columns: Vec<String> = column_names
+        .iter()
+        .filter(|c| c.col_type == "secondary")
+        .map(|c| c.name.clone())
+        .collect();
+
+    let system_prompt = build_classification_system_prompt(conn, plugin_name)?;
+
+    #[derive(Clone)]
+    struct ItemData {
+        id: String,
+        content: String,
+    }
+
+    let items_to_process: Vec<ItemData> = {
+        let mut items = vec![];
+        for item_id in item_ids {
+            let mut stmt = conn
+                .prepare(&format!("SELECT * FROM {} WHERE id = ?1", table_name))
+                .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+            let cols: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+            let col_count = cols.len();
+
+            let item_result: Option<Value> = stmt
+                .query_row([item_id.as_str()], |row| {
+                    let mut item = serde_json::json!({});
+                    for i in 0..col_count {
+                        let name = &cols[i];
+                        let value: Value = match row.get_ref(i) {
+                            Ok(rusqlite::types::ValueRef::Null) => Value::Null,
+                            Ok(rusqlite::types::ValueRef::Integer(i)) => Value::Number(i.into()),
+                            Ok(rusqlite::types::ValueRef::Real(f)) => {
+                                serde_json::Number::from_f64(f)
+                                    .map(Value::Number)
+                                    .unwrap_or(Value::Null)
+                            }
+                            Ok(rusqlite::types::ValueRef::Text(t)) => {
+                                Value::String(String::from_utf8_lossy(t).to_string())
+                            }
+                            Ok(rusqlite::types::ValueRef::Blob(b)) => {
+                                Value::String(format!("<blob {} bytes>", b.len()))
+                            }
+                            Err(_) => Value::Null,
+                        };
+                        item[name] = value;
+                    }
+                    Ok::<Value, rusqlite::Error>(item)
+                })
+                .ok();
+
+            if let Some(item) = item_result {
+                if let Some(item_map) = item.as_object() {
+                    let user_prompt = build_user_prompt_for_item(
+                        item_map,
+                        main_column.as_deref(),
+                        &secondary_columns,
+                    );
+                    items.push(ItemData {
+                        id: item_id.clone(),
+                        content: user_prompt,
+                    });
+                }
+            }
+        }
+        items
+    };
 
     let mut results = vec![];
-    for item_id in item_ids {
-        let mut stmt = conn
-            .prepare(&format!("SELECT * FROM {} WHERE id = ?1", table_name))
-            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+    let mut updated_count = 0;
 
-        let column_names: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
-        let column_count = column_names.len();
+    for item in items_to_process {
+        match llm_client.complete(&endpoint, &system_prompt, &item.content, 0.7, 1024) {
+            Ok(ai_response) => {
+                let (cognitive_axis, context_axis) = llm::parse_classification_response(
+                    &ai_response,
+                    "cognitive_axis",
+                    Some("context_axis"),
+                )
+                .unwrap_or(("General".to_string(), None));
 
-        let result = stmt
-            .query_row([item_id.as_str()], |row| {
-                let mut item = serde_json::json!({});
-                for i in 0..column_count {
-                    let name = &column_names[i];
-                    let value: Value = match row.get_ref(i) {
-                        Ok(rusqlite::types::ValueRef::Null) => Value::Null,
-                        Ok(rusqlite::types::ValueRef::Integer(i)) => Value::Number(i.into()),
-                        Ok(rusqlite::types::ValueRef::Real(f)) => serde_json::Number::from_f64(f)
-                            .map(Value::Number)
-                            .unwrap_or(Value::Null),
-                        Ok(rusqlite::types::ValueRef::Text(t)) => {
-                            Value::String(String::from_utf8_lossy(t).to_string())
-                        }
-                        Ok(rusqlite::types::ValueRef::Blob(b)) => {
-                            Value::String(format!("<blob {} bytes>", b.len()))
-                        }
-                        Err(_) => Value::Null,
-                    };
-                    item[name] = value;
+                conn.execute(
+                    &format!(
+                        "UPDATE {} SET cognitive_axis = ?1 WHERE id = ?2",
+                        table_name
+                    ),
+                    [&cognitive_axis, &item.id],
+                )
+                .map_err(|e| format!("Failed to update cognitive_axis: {}", e))?;
+
+                if let Some(ctx) = &context_axis {
+                    let _ = conn.execute(
+                        &format!("UPDATE {} SET context_axis = ?1 WHERE id = ?2", table_name),
+                        [ctx, &item.id],
+                    );
                 }
-                item["plugin_name"] = Value::String(plugin_name.to_string());
-                Ok(item)
-            })
-            .ok();
 
-        if let Some(item) = result {
-            results.push(item);
+                results.push(serde_json::json!({
+                    "id": item.id,
+                    "cognitive_axis": cognitive_axis,
+                    "context_axis": context_axis,
+                }));
+                updated_count += 1;
+            }
+            Err(e) => {
+                info!("LLM call failed for item {}: {}", item.id, e);
+                results.push(serde_json::json!({
+                    "id": item.id,
+                    "error": e,
+                }));
+            }
         }
     }
 
     Ok(serde_json::json!({
         "action_id": action_id,
         "processed": results.len(),
+        "updated": updated_count,
         "items": results,
-        "status": "pending_ai_processing"
+        "status": if updated_count > 0 { "completed" } else { "failed" }
     }))
+}
+
+fn get_default_llm_endpoint(conn: &Connection) -> Result<LlmEndpoint, String> {
+    let result = conn.query_row(
+        "SELECT id, name, provider, endpoint_url, api_key, model, is_default FROM llm_endpoints WHERE is_default = 1 LIMIT 1",
+        [],
+        |row| {
+            Ok(LlmEndpoint {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                provider: row.get(2)?,
+                endpoint_url: row.get(3)?,
+                api_key: row.get(4)?,
+                model: row.get(5)?,
+                is_default: row.get(6)?,
+            })
+        },
+    );
+
+    if let Ok(endpoint) = result {
+        return Ok(endpoint);
+    }
+
+    conn.query_row(
+        "SELECT id, name, provider, endpoint_url, api_key, model, is_default FROM llm_endpoints LIMIT 1",
+        [],
+        |row| {
+            Ok(LlmEndpoint {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                provider: row.get(2)?,
+                endpoint_url: row.get(3)?,
+                api_key: row.get(4)?,
+                model: row.get(5)?,
+                is_default: row.get(6)?,
+            })
+        },
+    ).map_err(|_| "No LLM endpoint configured. Please add an LLM endpoint in settings.".to_string())
+}
+
+fn get_plugin_column_names(
+    conn: &Connection,
+    plugin_name: &str,
+) -> Result<Vec<PluginColumn>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT name, display, type, dtype, sortable FROM plugin_columns WHERE plugin_name = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let columns = stmt
+        .query_map([plugin_name], |row| {
+            Ok(PluginColumn {
+                name: row.get(0)?,
+                display: row.get(1)?,
+                col_type: row.get(2)?,
+                dtype: row.get(3)?,
+                sortable: row.get(4)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    columns
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+fn build_classification_system_prompt(
+    conn: &Connection,
+    plugin_name: &str,
+) -> Result<String, String> {
+    let mut stmt = conn
+        .prepare("SELECT name FROM context_axis ORDER BY name")
+        .map_err(|e| e.to_string())?;
+
+    let axes: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let cognitive_axes = vec![
+        "require (needs immediate attention)",
+        "review (needs to be reviewed)",
+        "delegate (should be forwarded to someone else)",
+        "schedule (needs to be scheduled)",
+        "call (needs a phone call)",
+        "meeting (needs a meeting)",
+        "delete (can be deleted)",
+    ];
+
+    Ok(format!(
+        r#"You are a cognitive axis classifier for a plugin called '{}'.
+Your task is to classify items based on their content.
+
+COGNITIVE AXES (choose one):
+{}
+
+CONTEXT AXES (choose one or 'General' if none applies):
+{}
+
+Respond with ONLY the cognitive axis and context axis in this format:
+cognitive_axis: <axis>
+context_axis: <context>
+
+For example:
+cognitive_axis: review
+context_axis: Work"#,
+        plugin_name,
+        cognitive_axes
+            .iter()
+            .map(|a| format!("- {}", a))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        axes.join("\n")
+    ))
+}
+
+fn build_user_prompt_for_item(
+    item: &serde_json::Map<String, Value>,
+    main_column: Option<&str>,
+    secondary_columns: &[String],
+) -> String {
+    let mut parts = vec![];
+
+    if let Some(main) = main_column {
+        if let Some(value) = item.get(main) {
+            parts.push(format!("{}: {}", main, value));
+        }
+    }
+
+    for col in secondary_columns.iter().take(5) {
+        if let Some(value) = item.get(col) {
+            parts.push(format!("{}: {}", col, value));
+        }
+    }
+
+    if parts.is_empty() {
+        "No content available for classification".to_string()
+    } else {
+        parts.join("\n")
+    }
 }
 
 #[cfg(test)]

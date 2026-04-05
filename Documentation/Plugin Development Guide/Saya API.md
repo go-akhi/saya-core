@@ -50,6 +50,28 @@ interface PluginInfo {
   valid: boolean;
   errors: string[];
 }
+
+interface ErrorPayload {
+  message: string;
+  title?: string;
+  type?: "error" | "warning" | "info";
+}
+
+### Completion API
+
+```typescript
+interface CompletionRequest {
+  user: string;              // Required: The user's message/prompt
+  system?: string;           // Optional: System/instruction prompt prepended to user message
+  temperature?: number;      // Optional: Sampling temperature 0-2 (default: 0.7)
+  max_tokens?: number;       // Optional: Max tokens to generate (default: 1024)
+}
+
+interface CompletionResponse {
+  content: string;           // The LLM's response text
+  model: string;             // The model used for generation
+  provider: string;          // The provider used (openai, anthropic, etc.)
+}
 ```
 
 ### AI Actions
@@ -245,6 +267,77 @@ Get full plugin information including validation status.
 const info = await api.getPluginInfo();
 ```
 
+#### `showError(payload: ErrorPayload): Promise<void>`
+
+Display an error notification to the user via the core UI.
+
+```typescript
+// Basic error
+await api.showError({
+  message: "Failed to sync with server"
+});
+
+// With title and type
+await api.showError({
+  title: "Sync Failed",
+  message: "Could not connect to the server",
+  type: "error" // or "warning", "info"
+});
+```
+
+**ErrorPayload:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `message` | `string` | Error message (required) |
+| `title` | `string` | Optional title |
+| `type` | `"error" \| "warning" \| "info"` | Notification type (default: "error") |
+
+#### `complete(options: CompletionRequest): Promise<CompletionResponse>`
+
+Send a completion request to the configured LLM endpoint. This is useful for chatbots, text generation, or any plugin that needs general-purpose LLM access.
+
+```typescript
+// Basic completion - just a user message
+const response = await api.complete({
+  user: "Hello! How are you?"
+});
+console.log(response.content);
+
+// With system instruction and user message
+const response = await api.complete({
+  system: "You are a helpful assistant that speaks like a pirate.",
+  user: "What's the weather?"
+});
+
+// With custom parameters
+const response = await api.complete({
+  system: "You are a concise summarizer.",
+  user: "Summarize this article: ...",
+  temperature: 0.5,
+  max_tokens: 200
+});
+```
+
+**CompletionRequest:**
+
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `user` | `string` | Yes | The user's message or prompt |
+| `system` | `string` | No | System/instruction prompt prepended to user message |
+| `temperature` | `number` | No | Sampling temperature 0-2 (default: 0.7) |
+| `max_tokens` | `number` | No | Max tokens to generate (default: 1024) |
+
+> **Important:** This API uses `system`/`user` string fields, NOT the `messages` array format. The core combines them into a single prompt internally.
+
+**CompletionResponse:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `content` | `string` | Generated text response |
+| `model` | `string` | Model used for generation |
+| `provider` | `string` | Provider used (openai, anthropic, local, bedrock) |
+
 ### Properties
 
 #### `isConnected: boolean`
@@ -285,7 +378,7 @@ Communication uses the `saya://` protocol via postMessage:
 ```typescript
 interface SayaMessage {
   id: string;           // Unique request ID
-  type: MessageType;   // "query" | "mutate" | "subscribe" | "ai_action"
+  type: MessageType;   // "query" | "mutate" | "subscribe" | "ai_action" | "show_error" | "complete"
   payload: unknown;     // Request-specific data
   source: "plugin";    // Always "plugin" for outgoing
   plugin?: string;      // Target plugin name

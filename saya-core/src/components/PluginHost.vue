@@ -49,7 +49,7 @@ watch(() => pluginStore.activePlugin, () => {
   <div class="plugin-host">
     <iframe
       v-if="pluginStore.activePlugin"
-      :src="`/plugins/${pluginStore.activePlugin}/ui/index.html`"
+      :src="`saya-plugin://localhost/${pluginStore.activePlugin}/ui/index.html`"
       class="plugin-iframe"
       sandbox="allow-scripts allow-same-origin"
     />

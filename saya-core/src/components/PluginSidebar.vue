@@ -22,7 +22,17 @@ interface DiscoveredPlugin {
 }
 
 const sortedPlugins = computed(() => {
-  return [...pluginStore.plugins].sort((a, b) => {
+  // Merge discovered (filesystem) plugins with DB-registered plugins
+  const byName = new Map<string, typeof pluginStore.plugins[number]>();
+  for (const p of pluginStore.plugins) {
+    byName.set(p.name, p);
+  }
+  for (const p of pluginStore.allPlugins) {
+    if (!byName.has(p.name)) {
+      byName.set(p.name, p);
+    }
+  }
+  return [...byName.values()].sort((a, b) => {
     const order = ["email", "tasks", "notes"];
     const aIdx = order.indexOf(a.name);
     const bIdx = order.indexOf(b.name);
@@ -67,11 +77,11 @@ function stopResize() {
   document.removeEventListener("mouseup", stopResize);
 }
 
-onMounted(async () => {
+async function discoverPlugins() {
   try {
     const results = await invoke<DiscoveredPlugin[]>("discover_plugins");
     const validPlugins = results.filter((p) => p.valid && p.name);
-    
+
     pluginStore.plugins = validPlugins.map((p) => ({
       name: p.name!,
       display_name: p.display_name,
@@ -79,7 +89,7 @@ onMounted(async () => {
       version: "0.1.0",
       is_enabled: p.valid,
     }));
-    
+
     validPlugins.forEach((p) => {
       if (p.name) {
         pluginStore.pluginManifests[p.name] = {
@@ -94,9 +104,19 @@ onMounted(async () => {
     });
   } catch (e) {
     console.error("Failed to load plugins:", e);
-  } finally {
-    isLoading.value = false;
   }
+}
+
+async function onMarketplaceClose() {
+  showMarketplace.value = false;
+  await discoverPlugins();
+  await pluginStore.loadAllPlugins();
+}
+
+onMounted(async () => {
+  await discoverPlugins();
+  await pluginStore.loadAllPlugins();
+  isLoading.value = false;
 });
 
 onUnmounted(() => {
@@ -172,7 +192,7 @@ onUnmounted(() => {
       @mousedown="startResize"
     />
 
-    <PluginMarketplace v-if="showMarketplace" @close="showMarketplace = false" />
+    <PluginMarketplace v-if="showMarketplace" @close="onMarketplaceClose" />
   </aside>
 </template>
 

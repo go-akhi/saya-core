@@ -1,10 +1,30 @@
 mod db;
+pub mod llm;
 pub mod plugins;
 
 use std::path::PathBuf;
 use tauri::Manager;
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
+
+fn mime_from_extension(ext: &str) -> &str {
+    match ext {
+        "html" | "htm" => "text/html",
+        "js" | "mjs" => "application/javascript",
+        "css" => "text/css",
+        "json" => "application/json",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "svg" => "image/svg+xml",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "ico" => "image/x-icon",
+        "webp" => "image/webp",
+        _ => "application/octet-stream",
+    }
+}
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -175,6 +195,78 @@ fn execute_ai_action(
         &item_ids,
         context.as_ref(),
     )
+}
+
+#[derive(serde::Serialize)]
+struct CompletionResult {
+    content: String,
+    model: String,
+    provider: String,
+}
+
+#[tauri::command]
+fn llm_complete(
+    system: Option<String>,
+    user: String,
+    temperature: f32,
+    max_tokens: u32,
+    state: tauri::State<'_, db::DbState>,
+) -> Result<CompletionResult, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+    let endpoint = get_default_llm_endpoint(&conn)?;
+    let client = llm::LlmClient::new();
+
+    let prompt = match system {
+        Some(sys) => format!("{}\n\n{}", sys, user),
+        None => user,
+    };
+
+    let response = client.complete(&endpoint, "", &prompt, temperature, max_tokens)
+        .map_err(|e| e.to_string())?;
+
+    Ok(CompletionResult {
+        content: response,
+        model: endpoint.model,
+        provider: endpoint.provider,
+    })
+}
+
+fn get_default_llm_endpoint(conn: &rusqlite::Connection) -> Result<llm::LlmEndpoint, String> {
+    let result = conn.query_row(
+        "SELECT id, name, provider, endpoint_url, api_key, model, is_default FROM llm_endpoints WHERE is_default = 1 LIMIT 1",
+        [],
+        |row| {
+            Ok(llm::LlmEndpoint {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                provider: row.get(2)?,
+                endpoint_url: row.get(3)?,
+                api_key: row.get(4)?,
+                model: row.get(5)?,
+                is_default: row.get(6)?,
+            })
+        },
+    );
+
+    if let Ok(endpoint) = result {
+        return Ok(endpoint);
+    }
+
+    conn.query_row(
+        "SELECT id, name, provider, endpoint_url, api_key, model, is_default FROM llm_endpoints LIMIT 1",
+        [],
+        |row| {
+            Ok(llm::LlmEndpoint {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                provider: row.get(2)?,
+                endpoint_url: row.get(3)?,
+                api_key: row.get(4)?,
+                model: row.get(5)?,
+                is_default: row.get(6)?,
+            })
+        },
+    ).map_err(|_| "No LLM endpoint configured. Please add an LLM endpoint in settings.".to_string())
 }
 
 // --- Context Axes ---
@@ -666,6 +758,26 @@ async fn install_plugin_from_repo(
 }
 
 #[tauri::command]
+fn uninstall_plugin(
+    plugin_name: String,
+    state: tauri::State<'_, db::DbState>,
+) -> Result<bool, String> {
+    let conn = state.conn.lock().map_err(|e| e.to_string())?;
+
+    plugins::registry::uninstall_plugin(&conn, &plugin_name)?;
+
+    let plugins_dir = get_plugins_dir();
+    let plugin_dir = plugins_dir.join(&plugin_name);
+    if plugin_dir.exists() {
+        std::fs::remove_dir_all(&plugin_dir)
+            .map_err(|e| format!("Failed to remove plugin directory: {}", e))?;
+    }
+
+    info!("Uninstalled plugin '{}'", plugin_name);
+    Ok(true)
+}
+
+#[tauri::command]
 fn toggle_plugin_enabled(
     plugin_name: String,
     state: tauri::State<'_, db::DbState>,
@@ -716,6 +828,47 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(db_state)
+        .register_uri_scheme_protocol("saya-plugin", |_ctx, request| {
+            let uri = request.uri().to_string();
+            // URI format: saya-plugin://localhost/{plugin_name}/ui/{path}
+            let path = uri
+                .strip_prefix("saya-plugin://localhost/")
+                .or_else(|| uri.strip_prefix("saya-plugin://localhost"))
+                .unwrap_or("");
+
+            let plugins_dir = get_plugins_dir();
+
+            // Prevent path traversal via ".." in the URL path
+            if path.contains("..") {
+                return http::Response::builder()
+                    .status(403)
+                    .header("Content-Type", "text/plain")
+                    .body(b"Forbidden".to_vec())
+                    .unwrap();
+            }
+
+            let file_path = plugins_dir.join(path);
+
+            match std::fs::read(&file_path) {
+                Ok(content) => {
+                    let ext = file_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("");
+                    let mime = mime_from_extension(ext);
+                    http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", mime)
+                        .body(content)
+                        .unwrap()
+                }
+                Err(_) => http::Response::builder()
+                    .status(404)
+                    .header("Content-Type", "text/plain")
+                    .body(b"Not Found".to_vec())
+                    .unwrap(),
+            }
+        })
         .setup(|app| {
             let app_handle = app.handle().clone();
             let plugins_dir = get_plugins_dir();
@@ -751,11 +904,13 @@ pub fn run() {
             update_llm_endpoint,
             delete_llm_endpoint,
             test_llm_connection,
+            llm_complete,
             get_user_accounts,
             toggle_account_active,
             delete_user_account,
             get_all_plugins,
             toggle_plugin_enabled,
+            uninstall_plugin,
             fetch_plugin_registry,
             verify_registry,
             fetch_plugin_readme,

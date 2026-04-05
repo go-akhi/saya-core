@@ -160,8 +160,9 @@ pub async fn install_plugin_from_repo(
 
     let (owner, repo) = parse_repo_url(repo_url)?;
 
-    let zip_url = format!("https://github.com/{}/{}/zipball", owner, repo);
+    let zip_url = format!("https://api.github.com/repos/{}/{}/zipball", owner, repo);
     let response = client.get(&zip_url)
+        .header("Accept", "application/vnd.github+json")
         .send()
         .await
         .map_err(|e| format!("Failed to download plugin: {}", e))?;
@@ -182,18 +183,14 @@ pub async fn install_plugin_from_repo(
         .map_err(|e| format!("Failed to create temp dir: {}", e))?;
 
     let mut root_dir_name: Option<String> = None;
-    for i in 0..archive.len() {
-        let name = archive.by_index_raw(i)
+    if archive.len() > 0 {
+        let first_name = archive.by_index_raw(0)
             .map_err(|e| format!("Failed to read zip entry: {}", e))?
             .name()
             .to_string();
-        if name.ends_with('/') {
-            let parts: Vec<&str> = name.split('/').collect();
-            if let Some(dir) = parts.first() {
-                if dir.starts_with(&format!("{}-", repo)) {
-                    root_dir_name = Some(dir.to_string());
-                    break;
-                }
+        if let Some(root) = first_name.split('/').next() {
+            if !root.is_empty() {
+                root_dir_name = Some(root.to_string());
             }
         }
     }
@@ -232,10 +229,22 @@ pub async fn install_plugin_from_repo(
 
     if let Some(entry) = inner_dir {
         let src = entry.path();
-        let dest = plugins_dir.join(&repo);
+
+        // Read manifest.json to get the plugin name for the destination folder
+        let manifest_path = src.join("manifest.json");
+        let manifest_str = std::fs::read_to_string(&manifest_path)
+            .map_err(|e| format!("Failed to read manifest.json from plugin: {}", e))?;
+        let manifest: serde_json::Value = serde_json::from_str(&manifest_str)
+            .map_err(|e| format!("Failed to parse manifest.json: {}", e))?;
+        let plugin_name = manifest.get("name")
+            .and_then(|v| v.as_str())
+            .ok_or("manifest.json missing 'name' field")?;
+
+        let dest = plugins_dir.join(plugin_name);
 
         if dest.exists() {
-            return Err(format!("Plugin '{}' is already installed", repo));
+            std::fs::remove_dir_all(&temp_dir).ok();
+            return Err(format!("Plugin '{}' is already installed", plugin_name));
         }
 
         std::fs::rename(&src, &dest)

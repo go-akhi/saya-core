@@ -5,10 +5,38 @@ import PluginSidebar from "./components/PluginSidebar.vue";
 import PluginHost from "./components/PluginHost.vue";
 import ActionsBar from "./components/ActionsBar.vue";
 import SettingsModal from "./components/SettingsModal.vue";
+import ErrorNotification from "./components/ErrorNotification.vue";
+import { setShowErrorCallback } from "./lib/core-message-handler";
+import { useUiStore } from "./stores/ui";
+
+const uiStore = useUiStore();
+
+const debugLog: string[] = [];
+
+setShowErrorCallback((payload, pluginName) => {
+  debugLog.push(`showError: ${payload.message} (${pluginName})`);
+  uiStore.showError({
+    id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+    title: payload.title,
+    message: payload.message,
+    type: payload.type || "error",
+    pluginName,
+  });
+});
+
+window.addEventListener("message", (e) => {
+  const msg = e.data;
+  if (msg?.source === "plugin" && msg?.type === "show_error") {
+    debugLog.push(`Received show_error: ${JSON.stringify(msg.payload)}`);
+  }
+});
 </script>
 
 <template>
   <div class="app">
+    <div v-if="debugLog.length" class="debug-panel">
+      <div v-for="(log, i) in debugLog" :key="i">{{ log }}</div>
+    </div>
     <TopBar />
     <div class="main-area">
       <CognitiveAxis />
@@ -17,6 +45,7 @@ import SettingsModal from "./components/SettingsModal.vue";
       <ActionsBar />
     </div>
     <SettingsModal />
+    <ErrorNotification />
   </div>
 </template>
 
@@ -82,5 +111,20 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+.debug-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #1a1a1a;
+  color: #00ff00;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 8px;
+  z-index: 9999;
+  max-height: 150px;
+  overflow-y: auto;
 }
 </style>

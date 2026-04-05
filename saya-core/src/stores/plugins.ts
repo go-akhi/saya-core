@@ -97,6 +97,18 @@ export const usePluginStore = defineStore("plugins", () => {
     }
   }
 
+  async function uninstallPlugin(pluginName: string) {
+    try {
+      await invoke<boolean>("uninstall_plugin", { pluginName });
+      allPlugins.value = allPlugins.value.filter((p) => p.name !== pluginName);
+      if (activePlugin.value === pluginName) {
+        activePlugin.value = null;
+      }
+    } catch (e) {
+      throw e;
+    }
+  }
+
   async function toggleEnabled(pluginName: string) {
     try {
       const newState = await invoke<boolean>("toggle_plugin_enabled", { pluginName });
@@ -127,6 +139,7 @@ export const usePluginStore = defineStore("plugins", () => {
     endResize,
     activePluginHasSettings,
     loadAllPlugins,
+    uninstallPlugin,
     toggleEnabled,
   };
 });

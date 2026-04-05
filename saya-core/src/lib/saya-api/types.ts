@@ -82,6 +82,19 @@ export interface AiActionRequest {
   context?: Record<string, unknown>;
 }
 
+export interface CompletionRequest {
+  system?: string;
+  user: string;
+  temperature?: number;
+  max_tokens?: number;
+}
+
+export interface CompletionResponse {
+  content: string;
+  model: string;
+  provider: string;
+}
+
 export interface SubscriptionOptions {
   event: "items_changed" | "item_created" | "item_updated" | "item_deleted";
   callback: (payload: unknown) => void;
@@ -93,8 +106,16 @@ export type MessageType =
   | "subscribe"
   | "unsubscribe"
   | "ai_action"
+  | "complete"
+  | "show_error"
   | "response"
   | "event";
+
+export interface ErrorPayload {
+  title?: string;
+  message: string;
+  type?: "error" | "warning" | "info";
+}
 
 export interface SayaMessage {
   id: string;
