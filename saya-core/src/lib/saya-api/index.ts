@@ -19,7 +19,7 @@ function generateId(): string {
 }
 
 export class SayaApi {
-  private iframe: HTMLIFrameElement | null = null;
+  private targetWindow: Window | null = null;
   private pendingRequests: Map<string, {
     resolve: (value: unknown) => void;
     reject: (reason: Error) => void;
@@ -38,8 +38,8 @@ export class SayaApi {
     this.pluginName = pluginName;
   }
 
-  connect(iframe: HTMLIFrameElement): void {
-    this.iframe = iframe;
+  connect(target: Window): void {
+    this.targetWindow = target;
     this.setupMessageListener();
     this._isConnected = true;
   }
@@ -52,7 +52,7 @@ export class SayaApi {
     this.pendingRequests.forEach(({ timeout }) => clearTimeout(timeout));
     this.pendingRequests.clear();
     this.subscriptions.clear();
-    this.iframe = null;
+    this.targetWindow = null;
     this._isConnected = false;
   }
 
@@ -90,7 +90,7 @@ export class SayaApi {
 
   private sendMessage<T = unknown>(message: Omit<SayaMessage, "id" | "source">, timeout = 30000): Promise<T> {
     return new Promise((resolve, reject) => {
-      if (!this.iframe) {
+      if (!this.targetWindow) {
         reject(new Error("Not connected to core"));
         return;
       }
@@ -113,7 +113,7 @@ export class SayaApi {
         timeout: timeoutHandle,
       });
 
-      this.iframe.contentWindow?.postMessage(fullMessage, "*");
+      this.targetWindow.postMessage(fullMessage, "*");
     });
   }
 

@@ -10,7 +10,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 fn mime_from_extension(ext: &str) -> &str {
     match ext {
         "html" | "htm" => "text/html",
-        "js" | "mjs" => "application/javascript",
+        "js" | "mjs" | "ts" => "application/javascript",
         "css" => "text/css",
         "json" => "application/json",
         "png" => "image/png",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { usePluginStore } from "../stores/plugins";
 import { createCoreMessageHandler } from "../lib/core-message-handler";
 import type { SayaMessage } from "../lib/saya-api";
@@ -14,7 +14,9 @@ const handleMessage = (event: MessageEvent) => {
   const message = event.data as SayaMessage;
   if (!message || typeof message !== "object") return;
   if (message.source === "plugin" && message.plugin === pluginStore.activePlugin) {
-    messageHandler.handleMessage(message, iframeRef.value?.contentWindow || window);
+    const targetWindow = iframeRef.value?.contentWindow;
+    if (!targetWindow) return;
+    messageHandler.handleMessage(message, targetWindow);
   }
 };
 
@@ -39,16 +41,13 @@ onUnmounted(() => {
   window.removeEventListener("message", handleMessage);
   if (unlistenHotReload) unlistenHotReload();
 });
-
-watch(() => pluginStore.activePlugin, () => {
-  iframeRef.value = document.querySelector(".plugin-iframe");
-});
 </script>
 
 <template>
   <div class="plugin-host">
     <iframe
       v-if="pluginStore.activePlugin"
+      ref="iframeRef"
       :src="`saya-plugin://localhost/${pluginStore.activePlugin}/ui/index.html`"
       class="plugin-iframe"
       sandbox="allow-scripts allow-same-origin"
