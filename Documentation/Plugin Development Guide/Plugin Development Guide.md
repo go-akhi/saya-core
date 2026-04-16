@@ -23,13 +23,26 @@
 
 ## Introduction
 
-Saya is a personal knowledge management system with a plugin-based architecture. Plugins extend Saya's functionality by providing:
+Saya is an **Agent-first personal knowledge management system** with a plugin-based architecture. The core app provides a central AI Agent that users interact with across desktop and mobile. 
 
-- **Data storage** for custom item types (emails, tasks, notes)
-- **AI classification** capabilities via the cognitive axis framework
-- **Cross-plugin actions** to integrate with other plugins
+Plugins extend the Agent's capabilities by acting as **Model Context Protocol (MCP)** providers. Through MCP, plugins offer:
 
-### Core Concepts
+- **Tools:** Executable functions the Agent can use to take action (e.g., "send_email", "create_task").
+- **Resources:** Data sources the Agent can read to gain context (e.g., "recent_emails", "calendar_events").
+- **Prompts:** Pre-defined templates that guide the Agent's behavior for specific tasks.
+
+### Core Architecture
+
+**Saya Agent:**
+- The central brain of the application.
+- Acts as an **MCP Host**, connecting to and orchestrating the various MCP servers provided by plugins.
+- Reachable via desktop UI or **paired mobile device (via Iroh Gossip)**.
+
+**Plugins:**
+- Each plugin is a self-contained **MCP Server**.
+- Provides specialized data storage (SQLite).
+- Offers a plugin-specific UI that consumes the **Core UI Library (Fluent 2)** and themes for visual consistency.
+- Uses core-provided **boilerplate** to quickly implement MCP interfaces.
 
 **Cognitive Axis (4R Framework):**
 - **Require** — Things you must act on
@@ -448,6 +461,42 @@ CREATE TABLE chatbot_items (
     cognitive_axis TEXT DEFAULT 'review',
     context_axis TEXT
 );
+```
+
+---
+
+## Model Context Protocol (MCP)
+
+Each Saya plugin is primarily an MCP server. This allows the Saya Agent to use the plugin's data and functionality as part of its reasoning and action-taking.
+
+### MCP Components
+
+1. **Tools:** These are functions the Agent can call. For example, a `tasks` plugin might provide a `create_task` tool.
+2. **Resources:** These are read-only data sources. For example, a `notes` plugin might provide a `recent_notes` resource.
+3. **Prompts:** These guide the Agent's interaction with the plugin. For example, an `email` plugin might provide a `summarize_inbox` prompt.
+
+### MCP Boilerplate
+
+Saya Core provides a standard MCP boilerplate for both **JavaScript** and **Rust (WASM)** plugins. This handles the protocol overhead (JSON-RPC), allowing you to focus on the implementation of your tools and resources.
+
+**Example: Defining an MCP Tool (JS)**
+
+```javascript
+// mcp.js (MCP boilerplate used by the plugin)
+import { McpServer } from "./saya-mcp-sdk";
+
+const server = new McpServer("email-plugin");
+
+server.tool("send_email", {
+  to: "string",
+  subject: "string",
+  body: "string"
+}, async (args) => {
+  const success = await sendEmail(args.to, args.subject, args.body);
+  return { success };
+});
+
+server.listen();
 ```
 
 ---

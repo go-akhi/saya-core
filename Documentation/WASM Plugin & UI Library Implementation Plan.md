@@ -21,20 +21,20 @@
 
 ### Goals
 
-1. **Rust plugins via WASM** -- Plugin authors write Rust, compile to `.wasm`, core executes it in a sandboxed wasmtime runtime
-2. **Shared UI library** -- A set of web components + CSS served by the core, so all plugins look cohesive without reimplementing UI primitives
-3. **Rust UI crate** -- Typed wrappers around the web components for Rust plugin authors using a frontend framework (Leptos, Dioxus, or Yew)
-4. **Backward compatibility** -- Existing JS-only plugins (manifest + schema + static HTML) continue working unchanged
+1. **Rust plugins via WASM as MCP Servers** -- Plugin authors write Rust, compile to `.wasm`, core executes it in a sandboxed wasmtime runtime. These plugins act as Model Context Protocol (MCP) servers, providing tools, resources, and prompts to the central Saya Agent.
+2. **Shared UI library** -- A set of web components + CSS served by the core, so all plugins look cohesive without reimplementing UI primitives.
+3. **Rust UI crate** -- Typed wrappers around the web components for Rust plugin authors using a frontend framework (Leptos, Dioxus, or Yew).
+4. **Mobile Integration** -- Plugins extend the Agent's capabilities which are exposed to the user's mobile device via Iroh Gossip.
 
 ### What Changes
 
 | Layer | Today | After |
 |-------|-------|-------|
-| Plugin logic | None (declarative only) | Optional `.wasm` with hooks (on_mutate, ai_action, etc.) |
-| Plugin UI | Raw HTML/CSS/JS per plugin | Shared web components via `saya-ui`, plus optional Rust→WASM UI |
-| Plugin SDK | Copy `saya-api/` JS files manually | `saya-plugin` Rust crate with typed API + UI components |
+| Plugin logic | Declarative / Some Rust | **MCP Server** (tools, resources, prompts) |
+| Core Role | Framework Host | **Agent Host & MCP Client** |
+| Plugin UI | Raw HTML/CSS/JS per plugin | Shared web components via `saya-ui` |
 | Asset serving | `saya-plugin://` per-plugin only | New `saya-core://` scheme for shared assets |
-| Core backend | No plugin code execution | wasmtime loads and calls `.wasm` modules |
+| Core backend | Limited plugin execution | wasmtime loads and calls MCP-compliant `.wasm` modules |
 
 ---
 
@@ -226,21 +226,22 @@ case "mutate": {
 
 ## 3. Architecture
 
-### Two WASM Contexts
+### Two WASM Contexts (MCP-Ready)
 
-There are two distinct WASM execution environments. This distinction is critical:
+There are two distinct WASM execution environments. This distinction is critical for the MCP-based architecture:
 
 ```
 +------------------------------------------------------------------+
-|  Tauri Core (Rust)                                               |
+|  Tauri Core (Rust) - MCP Host / Agent Host                       |
 |                                                                  |
 |  +---------------------------+    +--------------------------+   |
-|  | wasmtime runtime          |    | Tauri commands           |   |
+|  | wasmtime runtime          |    | Saya Agent               |   |
+|  | (MCP Servers)             |    | (MCP Client)             |   |
 |  |                           |    |                          |   |
-|  | plugin.wasm               |    | query_plugin_items       |   |
-|  |   on_before_mutate()     |<-->| mutate_plugin_item       |   |
-|  |   on_after_mutate()      |    | execute_ai_action        |   |
-|  |   on_ai_action()         |    | ...                      |   |
+|  | plugin.wasm (MCP)         |    | +----------------------+ |   |
+|  |   list_tools()            |<-->| | Iroh Gossip          | |   |
+|  |   call_tool()             |    | | (Mobile Gateway)     | |   |
+|  |   read_resource()         |    | +----------------------+ |   |
 |  +---------------------------+    +--------------------------+   |
 |         Backend WASM                        |                    |
 |         (wasm32-wasip1)                     | postMessage        |
@@ -265,16 +266,15 @@ There are two distinct WASM execution environments. This distinction is critical
 ```
 
 **Backend WASM** (`plugin.wasm`):
-- Compiled for `wasm32-wasip1`
-- Runs in wasmtime inside the Tauri Rust process
-- Has access to host-imported functions (query DB, log, etc.)
-- Provides hooks: mutation interceptors, AI action handlers, action handlers
-- Cannot access filesystem, network, or UI directly
+- Compiled for `wasm32-wasip1`.
+- Acts as an **MCP Server** providing tools, resources, and prompts to the host.
+- Has access to host-imported functions (query DB, log, etc.).
+- Cannot access filesystem, network, or UI directly.
 
 **Frontend WASM** (optional, for Rust-based UIs):
-- Compiled for `wasm32-unknown-unknown`
-- Runs in the browser inside the plugin iframe
-- Uses `saya-ui` web components for UI
+- Compiled for `wasm32-unknown-unknown`.
+- Uses `saya-ui` web components for a unified look.
+- Communicates with the core Agent via postMessage.
 - Communicates with core via postMessage (same as JS plugins)
 
 ### Plugin Directory Structure (New Format)

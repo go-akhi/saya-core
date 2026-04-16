@@ -5,14 +5,41 @@
 ## Overview
 
 The `saya-api` library provides a standardized interface for plugins to communicate with the Saya Core application. All communication happens through the browser's `postMessage` API, ensuring plugins remain sandboxed and cannot make direct network requests.
-
 ## Installation
 
-Plugins access the API through the global `window.parent` postMessage interface. Copy the `saya-api` types and library into your plugin's `ui/` directory.
+Plugins access the API through the core URI scheme. This also provides access to the **Saya UI Library** based on Fluent 2.
 
-## Types
+```html
+<link rel="stylesheet" href="saya-core://localhost/ui/saya-ui.css">
+<script type="module" src="saya-core://localhost/ui/saya-ui.js"></script>
+<script type="module" src="saya-core://localhost/ui/saya-api.js"></script>
+```
 
-### Core Types
+---
+
+## SayaApi Class
+
+### Methods
+
+#### `callTool(toolName: string, args: Record<string, unknown>): Promise<unknown>`
+
+Execute an MCP tool provided by either the core or any plugin. This is useful for UIs to trigger plugin logic that is also exposed to the Saya Agent.
+
+```typescript
+const result = await api.callTool("send_email", {
+  to: "akhi@example.com",
+  subject: "Hello!",
+  body: "This is a test."
+});
+```
+
+#### `readResource(uri: string): Promise<unknown>`
+
+Read an MCP resource.
+
+```typescript
+const recentEmails = await api.readResource("email://recent_emails");
+```
 
 ```typescript
 interface Item {

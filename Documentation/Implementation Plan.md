@@ -1,54 +1,53 @@
 # Saya Core App — Implementation Plan
 
 **Status:** Draft  
-**Last updated:** 2026-03-27
+**Last updated:** 2026-04-16
 
 ---
 
 ## 1. Vision
 
-Saya is a plugin platform from day one. The core app provides the organizational framework — the 4R cognitive axes, AI integration, user account management, and sync — and every feature the user interacts with is delivered by a plugin.
+Saya is an **Agent-first platform**. The core app provides a sophisticated AI Agent that serves as the user's primary interface. Functionality is extended through a plugin system based on the **Model Context Protocol (MCP)**. 
 
-Email is a plugin. Tasks are a plugin. Notes are a plugin. The core app has no opinion about what the user stores — it only provides the structure to organize it and the intelligence to help with it.
+Plugins provide the "skills" (tools), "knowledge" (resources), and "context" (prompts) for the Agent. The core app remains the organizational framework for the 4R cognitive axes, but the user's primary interaction is a conversation with the Saya Agent—either through the desktop app or a paired mobile device via **Iroh Gossip**.
 
 ---
 
 ## 2. Core App Responsibilities
 
-The core app handles exactly four things:
+The core app handles exactly five things:
 
 | Responsibility | Scope |
 |---|---|
+| **Agent Host** | Orchestrates the central AI Agent, manages MCP server connections from plugins, and handles tool execution. |
 | **Axes** | 4R cognitive framework (Require, Review, Retain, Relieve) + user-defined context axes (Work, Personal, Finance, etc.) |
-| **AI Bridge** | LLM endpoint management, model registry, interface for plugins to request AI operations |
-| **Accounts & Auth** | OAuth credential management, token refresh, secure storage |
-
+| **UI & Themes** | Provides a unified design system (Fluent 2) and theme engine that plugins consume to ensure visual consistency. |
+| **Mobile Gateway** | Uses **Iroh Gossip** to establish a secure, P2P connection with the user's mobile device for a remote chat interface. |
+| **Accounts & Auth** | OAuth credential management, token refresh, and secure storage for both core and plugin needs. |
 
 ---
 
-## 3. Plugin System
+## 3. Plugin System (MCP-Based)
 
 ### 3.1 What Is a Plugin?
 
-A plugin is a self-contained directory providing:
-- A data table (SQLite schema)
-- A UI (HTML/CSS/JS in iframe)
-- Processing logic (Rust module)
-- AI action declarations
-- Cross-plugin action declarations
+A plugin in Saya is an **MCP Provider**. It delivers functionality to the Saya Agent by implementing the Model Context Protocol. Each plugin provides:
+- **Tools:** Executable functions the Agent can call (e.g., "send_email", "create_task").
+- **Resources:** Data sources the Agent can read (e.g., "recent_emails", "calendar_events").
+- **Prompts:** Pre-defined templates for specific Agent behaviors.
+- **UI & Logic:** A specialized view for the desktop app and optional processing logic (WASM).
 
 ### 3.2 Plugin Directory Structure
 
 ```
 plugins/
 └── <plugin_name>/
-    ├── manifest.json       # Plugin metadata
-    ├── schema.sql          # Table definitions
+    ├── manifest.json       # Plugin metadata & MCP declarations
+    ├── schema.sql          # Table definitions for plugin-specific data
+    ├── mcp.js/rs           # MCP server implementation (boilerplate provided)
     └── ui/
-        └── index.html      # Plugin UI entry point
+        └── index.html      # Plugin UI entry point (consumes Core UI library)
 ```
-
-Plugin processing logic lives in Rust modules under `src/plugins/<plugin_name>/`.
 
 ### 3.3 The Manifest
 
@@ -467,26 +466,26 @@ App-wide preferences not tied to a specific feature.
 | 4.3 | Add type definitions for TypeScript support |
 | 4.4 | Build plugin-to-core API (query, mutate, subscribe) |
 
-### Phase 5: AI Bridge
-**Goal:** Core provides the button, plugins provide the brain
+### Phase 5: Model Context Protocol (MCP) Integration
+**Goal:** Core app acts as MCP Host; plugins act as MCP Servers
 
 | Step | Task |
 |---|---|
-| 6.1 | Implement AI request router in core |
-| 6.2 | Create AI action executor (fetch columns, send to LLM, write back) |
-| 6.3 | Build individual AI trigger (actions bar) |
-| 6.4 | Build batch AI trigger (top bar ☆) |
-| 6.5 | Add AI request isolation per plugin |
-| 6.6 | Create LLM endpoint configuration UI |
+| 5.1 | Implement MCP Host protocol in core backend |
+| 5.2 | Create plugin MCP boilerplate (JS/Rust) |
+| 5.3 | Implement tool discovery and execution logic |
+| 5.4 | Implement resource management and access control |
+| 5.5 | Wire MCP tools to Saya Agent chat interface |
 
-### Phase 6: Iroh Sync
-**Goal:** P2P sync between devices using Iroh
+### Phase 6: Mobile Gateway (Iroh Gossip)
+**Goal:** P2P chat interface via mobile device
 
 | Step | Task |
 |---|---|
-| 6.1 | Implement Iroh sync transport |
-| 6.2 | Build conflict resolution strategy |
-| 6.3 | Create sync status UI |
+| 6.1 | Integrate Iroh Gossip protocol for secure P2P |
+| 6.2 | Implement device pairing (QR-based exchange) |
+| 6.3 | Build chat protocol for Agent ↔ Mobile interaction |
+| 6.4 | Create minimal mobile frontend (Flutter/Compose) |
 
 ---
 
@@ -961,6 +960,6 @@ Both verified and community plugins are fully installable. The only differences 
 
 ## 13. Out of Scope (v1)
 
-- P2P sync
-- Mobile clients
+- Multi-user collaboration
+- Public web access (desktop/mobile pairing only)
 - PII sanitization (deferred until rust-presidio is ready)
